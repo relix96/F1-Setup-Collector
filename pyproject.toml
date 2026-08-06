@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "f1-setup-collector"
+version = "0.1.0"
+description = "Multi-site Formula 1 setup collector"
+authors = []
+readme = "README.md"
+packages = [{ include = "collector" }]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4.0"
+beautifulsoup4 = "^4.12.0"
+cloudscraper = "^1.2.71"
+curl-cffi = "^0.6.0"
+fake-useragent = "^1.5.1"
+requests = "^2.32.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+selenium = "^4.23.0"
+
+[tool.pytest.ini_options]
+testpaths = ["collector-tests"]
+addopts = '-p no:cacheprovider -m "not selenium"'
+markers = [
+    "selenium: tests that open a real browser and access the live website",
+    "live: tests that access a live external website",
+]
+
+[tool.poetry.scripts]
+run = "main:run"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
