@@ -14,6 +14,20 @@ poetry run python main.py
 Sem `--source`, o `main.py` executa todos os coletores registados. Para executar
 apenas um: `poetry run python main.py --source f1_laps`.
 
+Para recolher os setups da Google Sheet configurada (separador `gid=2082870794`):
+
+```powershell
+poetry run python main.py --game f1_26 --source excel_file
+```
+
+As tabelas auxiliares da folha estão disponíveis através de
+`get_tire_temperatures()`, `get_engine_temperatures()` ou, em conjunto,
+`get_reference_data()`.
+
+O método `run()` emite primeiro os setups e depois os registos
+`tire_temperature` e `engine_temperature`. Todos incluem um `source_id` estável
+para permitir upsert na base de dados.
+
 O Selenium é usado exclusivamente no teste de integração:
 
 ```powershell

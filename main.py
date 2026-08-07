@@ -40,11 +40,7 @@ def run() -> None:
             run_source(key.game, key.source)
         except Exception:
             # One unavailable website must not prevent the remaining collectors.
-            logger.exception(
-                "Collector failed: %s/%s",
-                key.game.value,
-                key.source.value,
-            )
+            logger.exception("Collector failed: %s/%s", key.game.value, key.source.value)
 
 
 

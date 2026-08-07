@@ -6,3 +6,4 @@ class GameId(StrEnum):
 class SourceId(StrEnum):
     F1_LAPS = "f1_laps"
     EA_SETUP = "ea_setup"
+    EXCEL_FILE = "excel_file"

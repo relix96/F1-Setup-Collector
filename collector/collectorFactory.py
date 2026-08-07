@@ -3,6 +3,7 @@ from typing import ClassVar
 from collector.base_collector import BaseCollector
 from collector.ea_setup.ea_setup_scrapper import EASetupCollector
 from collector.enums import GameId, SourceId
+from collector.excel_file.f1_26.collector import ExcelFileF126Collector
 from collector.f1_laps.f1_26.collector import F1LapsF126Collector
 from collector.models.collectorData import CollectorKey
 
@@ -10,6 +11,7 @@ from collector.models.collectorData import CollectorKey
 class CollectorFactory:
     _factory: ClassVar[dict[CollectorKey, type[BaseCollector]]] = {
         CollectorKey(game=GameId.F1_26, source=SourceId.F1_LAPS): F1LapsF126Collector,
+        CollectorKey(game=GameId.F1_26, source=SourceId.EXCEL_FILE): ExcelFileF126Collector,
         #CollectorKey(game=GameId.F1_26, source=SourceId.EA_SETUP): EASetupCollector, => need a log in to access the EA setups page, so this collector is disabled for now.
     }
 

@@ -2,6 +2,7 @@ from typing import Any, Dict
 
 from collector.mapper.base_mapper import BaseMapper
 from collector.models.setup import SetupDTO
+import datetime
 
 
 class F1SetupLapsMapper(BaseMapper):
@@ -19,6 +20,7 @@ class F1SetupLapsMapper(BaseMapper):
             weather=item.get("weather"),
             setup=setup,
             source_url=item.get("url"),
+            date = datetime.datetime.now().isoformat()
         )
 
     DETAIL_LABELS = {
