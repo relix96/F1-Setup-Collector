@@ -1,8 +1,17 @@
 """Tests for the spreadsheet-backed F1 26 collector."""
 
+import datetime
 from dataclasses import dataclass
 
+import pytest
+
 from collector.collectorFactory import CollectorFactory
+from collector.database import (
+    DatabaseEnvironment,
+    connect_database,
+    is_guid,
+    upsert_record,
+)
 from collector.enums import GameId, SourceId
 from collector.excel_file.f1_26.collector import ExcelFileF126Collector
 from collector.excel_file.mapper import ExcelFileF126Mapper
@@ -59,7 +68,10 @@ def test_run_maps_spreadsheet_setup() -> None:
     assert setups[0]["source_id"] == "australia"
     assert setups[0]["game"] == "F1 26"
     assert setups[0]["weather"] == "dry"
-    assert setups[0]["date"] == "24/06/2026"
+    collected_at = datetime.datetime.strptime(
+        setups[0]["date"], "%d/%m/%Y %H:%M:%S"
+    )
+    assert collected_at.date() == datetime.date.today()
     assert setups[0]["setup"]["aero"] == "30-0q / 42-15r"
     assert setups[0]["setup"]["notes"] == "lico hell"
     assert [record["record_type"] for record in records[2:]] == [
@@ -68,6 +80,59 @@ def test_run_maps_spreadsheet_setup() -> None:
         "engine_temperature",
         "engine_temperature",
     ]
+
+
+def test_gets_all_setups_from_excel_file() -> None:
+    records = list(get_collector().run())
+    setups = [record for record in records if "record_type" not in record]
+
+    assert len(setups) == 2
+    assert [setup["circuit"] for setup in setups] == ["Australia", "China"]
+
+
+@pytest.mark.live
+def test_run_gets_all_real_setups_from_excel_file() -> None:
+    collector = ExcelFileF126Collector()
+    database_client, collection = connect_database(DatabaseEnvironment.SANDBOX)
+
+    try:
+        records = list(collector.run())
+        setups = [record for record in records if "record_type" not in record]
+
+        assert setups
+        assert len(setups) == len(collector.get_tracks())
+        assert all(setup["source"] == "excel_file" for setup in setups)
+        assert all(setup["source_id"] for setup in setups)
+        assert all(setup["circuit"] for setup in setups)
+
+        for record in records:
+            upsert_record(collection, record)
+
+        expected_source_ids = {record["source_id"] for record in records}
+        saved_source_ids = {
+            document["source_id"]
+            for document in collection.find(
+                {
+                    "source": "excel_file",
+                    "source_id": {"$in": list(expected_source_ids)},
+                },
+                {"_id": 0, "source_id": 1},
+            )
+        }
+
+        assert saved_source_ids == expected_source_ids
+        assert all(
+            is_guid(document["_id"])
+            for document in collection.find(
+                {
+                    "source": "excel_file",
+                    "source_id": {"$in": list(expected_source_ids)},
+                }
+            )
+        )
+    finally:
+        collector.close()
+        database_client.close()
 
 
 def test_get_setups_by_track_is_case_insensitive() -> None:
