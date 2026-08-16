@@ -20,6 +20,22 @@ Para recolher os setups da Google Sheet configurada (separador `gid=2082870794`)
 poetry run python main.py --game f1_26 --source excel_file
 ```
 
+O `main.py` grava sempre no MongoDB de producao configurado em
+`MONGODB_PRODUCTION_URI`. Copie `.env.example` para `.env` e substitua
+`SERVER_IP`, utilizador e password pelos dados do servidor. A base e a colecao
+sao configuradas por `MONGODB_DATABASE` e `MONGODB_COLLECTION`.
+
+Os testes de integracao podem escolher a base sem alterar o codigo:
+
+```powershell
+$env:TEST_MONGODB_ENV="sandbox"   # MONGODB_SANDBOX_URI (localhost)
+$env:TEST_MONGODB_ENV="production" # MONGODB_PRODUCTION_URI (servidor)
+poetry run pytest -m live
+```
+
+O valor predefinido para testes e `sandbox`, para impedir escritas acidentais
+no servidor de producao.
+
 As tabelas auxiliares da folha estão disponíveis através de
 `get_tire_temperatures()`, `get_engine_temperatures()` ou, em conjunto,
 `get_reference_data()`.

@@ -2,6 +2,24 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug: Excel real (todos os setups)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "collector-tests/excel_file/f1_26/test_excel_file_collector.py::test_run_gets_all_real_setups_from_excel_file",
+                "-vv",
+                "-s"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+                "TEST_MONGODB_ENV": "sandbox"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Debug: testes F1 Laps",
             "type": "debugpy",
             "request": "launch",

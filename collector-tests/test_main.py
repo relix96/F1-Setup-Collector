@@ -3,6 +3,7 @@ import sys
 import pytest
 
 import main
+from collector.database import connect_database, get_test_database_environment
 from collector.enums import GameId, SourceId
 
 
@@ -39,23 +40,78 @@ def test_run_source_runs_prints_and_closes_collector(
     ]
 
 
+def test_run_source_upserts_every_collected_item(monkeypatch) -> None:
+    class FakeCollector:
+        def run(self):
+            yield {"source": "excel_file", "source_id": "australia"}
+            yield {"source": "excel_file", "source_id": "china"}
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        main.CollectorFactory,
+        "create_collector",
+        lambda game_id, source_id: FakeCollector(),
+    )
+    calls = []
+    collection = object()
+    monkeypatch.setattr(
+        main,
+        "upsert_record",
+        lambda target, item: calls.append((target, item)),
+    )
+
+    main.run_source(GameId.F1_26, SourceId.EXCEL_FILE, collection)
+
+    assert calls == [
+        (
+            collection,
+            {"source": "excel_file", "source_id": "australia"},
+        ),
+        (
+            collection,
+            {"source": "excel_file", "source_id": "china"},
+        ),
+    ]
+
+
 def test_run_uses_source_from_command_line(monkeypatch) -> None:
     called_sources = []
     monkeypatch.setattr(sys, "argv", ["main.py", "--source", "f1_laps"])
 
-    def fake_run_source(game_id, source_id) -> None:
-        called_sources.append((game_id, source_id))
+    class FakeClient:
+        def close(self) -> None:
+            pass
+
+    collection = object()
+    monkeypatch.setattr(
+        main,
+        "connect_database",
+        lambda environment: (FakeClient(), collection),
+    )
+
+    def fake_run_source(game_id, source_id, collection) -> None:
+        called_sources.append((game_id, source_id, collection))
 
     monkeypatch.setattr(main, "run_source", fake_run_source)
 
     main.run()
 
-    assert called_sources == [(GameId.F1_26, SourceId.F1_LAPS)]
+    assert len(called_sources) == 1
+    assert called_sources[0][:2] == (GameId.F1_26, SourceId.F1_LAPS)
+    assert called_sources[0][2] is collection
 
 
 @pytest.mark.live
 def test_run_scrapes_all_collectors(monkeypatch) -> None:
     """Run every registered collector against its real website."""
     monkeypatch.setattr(sys, "argv", ["main.py"])
+    test_environment = get_test_database_environment()
+    monkeypatch.setattr(
+        main,
+        "connect_database",
+        lambda production_environment: connect_database(test_environment),
+    )
 
     main.run()

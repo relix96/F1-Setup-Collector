@@ -1,7 +1,8 @@
+import datetime
 from typing import Any, ClassVar
 
 from collector.mapper.base_mapper import BaseMapper
-from collector.models.setup import SetupDTO
+from collector.excel_file.models.setup import ExcelSetup
 from collector.excel_file.models.temperature import EngineTemperatureDTO, TireTemperatureDTO
 
 
@@ -26,13 +27,13 @@ class ExcelFileF126Mapper(BaseMapper):
     def __init__(self, source_url: str) -> None:
         self.source_url = source_url
 
-    def map(self, item: dict[str, Any]) -> SetupDTO:
+    def map(self, item: dict[str, Any]) -> ExcelSetup:
         circuit = item["Circuit"]
         setup = {
             destination: item.get(source) or None
             for source, destination in self.setup_fields.items()
         }
-        return SetupDTO(
+        return ExcelSetup(
             source="excel_file",
             source_id=circuit.lower().replace(" ", "-"),
             game="F1 26",
@@ -40,7 +41,7 @@ class ExcelFileF126Mapper(BaseMapper):
             weather="dry",
             setup=setup,
             source_url=self.source_url,
-            date=item.get("Creation date") or None,
+            date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
         )
 
     def map_tire_temperature(
@@ -56,6 +57,7 @@ class ExcelFileF126Mapper(BaseMapper):
             temperature_celsius=item.get("Temp Range (°C)", ""),
             temperature_fahrenheit=item.get("Temp Range (°F)", ""),
             source_url=self.source_url,
+            date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
         )
 
     def map_engine_temperature(
@@ -71,6 +73,7 @@ class ExcelFileF126Mapper(BaseMapper):
             temperature_fahrenheit=item.get("Temp (°F)", ""),
             power_percent=item.get("Power %", ""),
             source_url=self.source_url,
+            date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
         )
 
     def map_tire_temperatures(

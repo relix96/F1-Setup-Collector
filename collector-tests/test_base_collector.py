@@ -21,7 +21,8 @@ class DummyCollector(BaseCollector):
     def get_tracks(self):
         return []
 
-    def test_base_collector_accepts_enum_ids() -> None:
+
+def test_base_collector_accepts_enum_ids() -> None:
     with patch(
         "collector.base_collector.HttpScrapper.__init__",
         return_value=None,

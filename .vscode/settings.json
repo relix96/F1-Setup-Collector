@@ -1,8 +1,14 @@
 {
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
     "python.testing.pytestArgs": [
-        "collector-tests"
+        "collector-tests/excel_file/f1_26",
+        "collector-tests/f1_laps/f1_26",
+        "collector-tests/test_base_collector.py",
+        "collector-tests/test_database.py",
+        "collector-tests/test_main.py",
+        "collector-tests/test_registry.py"
     ],
     "python.testing.cwd": "${workspaceFolder}",
     "python.envFile": "${workspaceFolder}/.env"
