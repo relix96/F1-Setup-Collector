@@ -1,4 +1,5 @@
 import argparse
+import time
 from typing import Any, Optional
 
 from collector.collectorFactory import CollectorFactory
@@ -9,20 +10,40 @@ from collector.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def run_source(game_id: GameId, source_id: SourceId, collection: Optional[Any] = None,) -> None:
+def run_source(
+    game_id: GameId,
+    source_id: SourceId,
+    collection: Optional[Any] = None,
+) -> int:
     logger.info("Starting collector: %s/%s", game_id.value, source_id.value)
-    collector = CollectorFactory.create_collector(game_id, source_id)
+    started_at = time.perf_counter()
+    collected_count = 0
+    collector = None
     try:
+        collector = CollectorFactory.create_collector(game_id, source_id)
         for item in collector.run():
             if collection is not None:
                 upsert_record(collection, item)
-            print(item)
+            collected_count += 1
+            # Keep console output from aborting collection on Windows consoles
+            # whose legacy encoding cannot represent values such as ``-3.50˚``.
+            print(ascii(item))
     finally:
-        collector.close()
+        if collector is not None:
+            collector.close()
+        logger.info(
+            "Collector finished: %s/%s | records=%d | duration=%.2fs",
+            game_id.value,
+            source_id.value,
+            collected_count,
+            time.perf_counter() - started_at,
+        )
+    return collected_count
 
 
 def run() -> None:
     """Parse command-line options and run one or every collector."""
+    started_at = time.perf_counter()
     parser = argparse.ArgumentParser(description="Collect Formula 1 setups")
     parser.add_argument("--game", choices=[game.value for game in GameId])
     parser.add_argument("--source", choices=[source.value for source in SourceId])
@@ -49,6 +70,10 @@ def run() -> None:
                 logger.exception("Collector failed: %s/%s", key.game.value, key.source.value)
     finally:
         client.close()
+        logger.info(
+            "All collectors finished | duration=%.2fs",
+            time.perf_counter() - started_at,
+        )
 
 
 

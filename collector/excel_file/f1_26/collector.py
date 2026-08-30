@@ -26,6 +26,7 @@ class ExcelFileF126Collector(BaseCollector):
         "Tires R",
         "Compounds",
         "Strategy (50%)",
+        "Fuel 50%",
         "Laps 50%",
         "Creation date",
         "Notes",
@@ -77,8 +78,14 @@ class ExcelFileF126Collector(BaseCollector):
         else:
             raise ValueError("The spreadsheet does not contain a Circuit header")
 
-        if headers[: len(self.expected_headers)] != self.expected_headers:
-            raise ValueError("The spreadsheet setup columns have changed")
+        missing_headers = [
+            header for header in self.expected_headers if header not in headers
+        ]
+        if missing_headers:
+            raise ValueError(
+                "The spreadsheet is missing required setup columns: "
+                + ", ".join(missing_headers)
+            )
 
         setups: list[dict[str, str]] = []
         for row in all_rows[header_index + 1 :]:

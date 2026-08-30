@@ -76,6 +76,25 @@ def test_run_source_upserts_every_collected_item(monkeypatch) -> None:
     ]
 
 
+def test_run_source_prints_unicode_safely(monkeypatch, capsys) -> None:
+    class FakeCollector:
+        def run(self):
+            yield {"front_camber": "-3.50˚"}
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        main.CollectorFactory,
+        "create_collector",
+        lambda game_id, source_id: FakeCollector(),
+    )
+
+    main.run_source(GameId.F1_26, SourceId.F1_LAPS)
+
+    assert capsys.readouterr().out.strip() == "{'front_camber': '-3.50\\u02da'}"
+
+
 def test_run_uses_source_from_command_line(monkeypatch) -> None:
     called_sources = []
     monkeypatch.setattr(sys, "argv", ["main.py", "--source", "f1_laps"])

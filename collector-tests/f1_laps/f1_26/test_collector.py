@@ -5,6 +5,7 @@ import pytest
 from collector.collectorFactory import CollectorFactory
 from collector.enums import GameId, SourceId
 from collector.f1_laps.f1_26.collector import F1LapsF126Collector
+from collector.f1_laps.mapper import F1SetupLapsMapper
 
 
 @dataclass
@@ -27,13 +28,91 @@ class F1Laps_F1_26_CollectorTest:
         assert collector.GameId is GameId.F1_26
         assert collector.SourceId is SourceId.F1_LAPS
 
+    def test_mapper_uses_registered_source_id(self) -> None:
+        setup = F1SetupLapsMapper().map({"id": "setup-1"}).to_dict()
+
+        assert setup["source"] == SourceId.F1_LAPS.value
+
+    def test_mapper_groups_settings_like_the_site(self) -> None:
+        setup = F1SetupLapsMapper().map(
+            {
+                "id": "setup-1",
+                "country": "Australia",
+                "setup": {
+                    "user": "driver",
+                    "settings": {
+                        "front_wing": "50",
+                        "rear_wing": "35",
+                        "differential_on_throttle": "80%",
+                        "differential_off_throttle": "50%",
+                        "front_camber": "-3.50˚",
+                        "rear_camber": "-2.00˚",
+                        "front_toe": "0.00˚",
+                        "rear_toe": "0.10˚",
+                        "front_suspension": "41",
+                        "rear_suspension": "32",
+                        "front_anti_roll_bar": "1",
+                        "rear_anti_roll_bar": "9",
+                        "front_ride_height": "22",
+                        "rear_ride_height": "40",
+                        "brake_pressure": "100",
+                        "front_brake_bias": "55",
+                        "front_right_tyre_pressure": "29.5",
+                        "front_left_tyre_pressure": "29.5",
+                        "rear_right_tyre_pressure": "21.3",
+                        "rear_left_tyre_pressure": "21.3",
+                    },
+                },
+            }
+        ).to_dict()
+
+        assert setup["setup"]["country"] == "Australia"
+        assert setup["setup"]["user"] == "driver"
+        assert setup["setup"]["settings"] == {
+            "aerodynamics": {
+                "front_wing": "50",
+                "rear_wing": "35",
+            },
+            "transmission": {
+                "differential_on_throttle": "80%",
+                "differential_off_throttle": "50%",
+            },
+            "suspension_geometry": {
+                "front_camber": "-3.50˚",
+                "rear_camber": "-2.00˚",
+                "front_toe": "0.00˚",
+                "rear_toe": "0.10˚",
+            },
+            "suspension": {
+                "front_suspension": "41",
+                "rear_suspension": "32",
+                "front_anti_roll_bar": "1",
+                "rear_anti_roll_bar": "9",
+                "front_ride_height": "22",
+                "rear_ride_height": "40",
+            },
+            "brakes": {
+                "brake_pressure": "100",
+                "front_brake_bias": "55",
+            },
+            "tyres": {
+                "front_right_tyre_pressure": "29.5",
+                "front_left_tyre_pressure": "29.5",
+                "rear_right_tyre_pressure": "21.3",
+                "rear_left_tyre_pressure": "21.3",
+            },
+        }
+
     def test_f1_laps_collector_gets_all_tracks(self, monkeypatch: pytest.MonkeyPatch,) -> None:
         collector = self.get_collector()
         tracks_html = """
+            <a href="/f1-26/setups/wet/">Wet setups</a>
             <a href="/f1-26/setups/australia/">Australia</a>
             <a href="/f1-26/setups/china/">China</a>
             <a href="/f1-26/setups/japan/">Japan</a>
             <a href="/f1-26/setups/bahrain/">Bahrain</a>
+            <a href="/f1-26/setups/saudi_arabia/">Saudi Arabia</a>
+            <a href="/f1-26/setups/las_vegas/">Las Vegas</a>
             <a href="/f1-26/setups/">all</a>
         """
         calls = []
@@ -49,6 +128,8 @@ class F1Laps_F1_26_CollectorTest:
             "china",
             "japan",
             "bahrain",
+            "saudi_arabia",
+            "las_vegas",
         ]
         assert calls == [
             (

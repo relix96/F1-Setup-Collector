@@ -19,6 +19,7 @@ class ExcelFileF126Mapper(BaseMapper):
         "Tires R": "tyres_race",
         "Compounds": "compounds",
         "Strategy (50%)": "strategy_50_percent",
+        "Fuel 50%": "fuel_50_percent",
         "Laps 50%": "laps_50_percent",
         "Creation date": "creation_date",
         "Notes": "notes",

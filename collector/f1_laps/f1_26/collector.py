@@ -6,7 +6,6 @@ from typing import ClassVar
 from collector.enums import GameId
 
 
-import requests
 from bs4 import BeautifulSoup
 
 from collector.f1_laps.mapper import F1SetupLapsMapper
@@ -14,7 +13,7 @@ from collector.f1_laps.f1_laps_collector import F1LapsCollector
 from collector.f1_laps.utils.constants import (DETAIL_LABELS, SETTING_LABELS)
 
 
-TRACK_PATH = re.compile(r"/f1-\d+/setups/([^/]+)/?$")
+TRACK_PATH = re.compile(r"/f1-\d+/setups/([a-z0-9_-]+)/?$", re.IGNORECASE)
 SETUP_PATH = re.compile(
     r"/f1-\d+/setups/([^/]+)/([0-9a-f]{8}-[0-9a-f-]{27,})/?$", re.IGNORECASE
 )
@@ -51,7 +50,10 @@ class F1LapsF126Collector(F1LapsCollector):
             if not match or url in seen:
                 continue
             slug = unquote(match.group(1)).strip().lower()
-            if not re.fullmatch(r"[a-z0-9-]+", slug):
+            # ``wet`` is the global weather filter, not a circuit. Current
+            # F1Laps circuit slugs also use underscores (for example,
+            # ``saudi_arabia`` and ``las_vegas``).
+            if slug == "wet" or not re.fullmatch(r"[a-z0-9_-]+", slug):
                 continue
             seen.add(url)
             text = list(anchor.stripped_strings)
@@ -149,7 +151,7 @@ class F1LapsF126Collector(F1LapsCollector):
 
     def get_setups_by_track(self, track_name: str) -> List[Dict[str, Any]]:
         """Return all dry and wet setups from one track."""
-        if not re.fullmatch(r"[a-z0-9-]+", track_name):
+        if not re.fullmatch(r"[a-z0-9_-]+", track_name):
             raise ValueError("track_name must be a valid F1Laps track slug")
 
         if track_name not in self._tracks:
@@ -180,23 +182,3 @@ class F1LapsF126Collector(F1LapsCollector):
             country = item["setup"].pop("country", item["circuit"])
             grouped[country][item["weather"]].append(item)
         return dict(grouped)
-
-    # Implement BaseCollector abstract method(s) with a useful default.
-    def request_api(self, url: str, method: str = "GET", json_response: bool = True, **kwargs):
-        """Simple HTTP requester used by this collector.
-
-        Returns a requests.Response when successful, or None on error.
-        If json_response is True, attempts to return response.json(); otherwise
-        returns the full response object so callers can access .text.
-        """
-        try:
-            resp = requests.request(method, url, timeout=15, **kwargs)
-            resp.raise_for_status()
-            if json_response:
-                try:
-                    return resp.json()
-                except ValueError:
-                    return None
-            return resp
-        except requests.RequestException:
-            return None

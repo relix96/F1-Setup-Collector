@@ -2,6 +2,7 @@
 
 import datetime
 from dataclasses import dataclass
+from unittest.mock import ANY
 
 import pytest
 
@@ -74,12 +75,35 @@ def test_run_maps_spreadsheet_setup() -> None:
     assert collected_at.date() == datetime.date.today()
     assert setups[0]["setup"]["aero"] == "30-0q / 42-15r"
     assert setups[0]["setup"]["notes"] == "lico hell"
+    assert setups[0]["setup"]["fuel_50_percent"] is None
     assert [record["record_type"] for record in records[2:]] == [
         "tire_temperature",
         "tire_temperature",
         "engine_temperature",
         "engine_temperature",
     ]
+
+
+def test_accepts_new_optional_spreadsheet_columns() -> None:
+    csv_with_fuel = CSV.replace(
+        "Strategy (50%),Laps 50%",
+        "Strategy (50%),Fuel 50%,Laps 50%",
+    ).replace(
+        "C3-C5,MH 11-13,29",
+        "C3-C5,MH 11-13,27.5 laps / -1.9,29",
+    ).replace(
+        "C2-C4,MH 10-12,28",
+        "C2-C4,MH 10-12,,28",
+    )
+    collector = ExcelFileF126Collector()
+    collector.request_api = lambda *args, **kwargs: FakeResponse(csv_with_fuel)
+
+    setups = [
+        record for record in collector.run() if "record_type" not in record
+    ]
+
+    assert setups[0]["setup"]["fuel_50_percent"] == "27.5 laps / -1.9"
+    assert setups[1]["setup"]["fuel_50_percent"] is None
 
 
 def test_gets_all_setups_from_excel_file() -> None:
@@ -151,8 +175,9 @@ def test_get_tire_temperatures() -> None:
             "game": "F1 26",
             "compound": "C1",
             "temperature_celsius": "95 - 115",
-            "temperature_fahrenheit": "203 - 239",
-            "source_url": ExcelFileF126Collector.spreadsheet_url,
+                "temperature_fahrenheit": "203 - 239",
+                "source_url": ExcelFileF126Collector.spreadsheet_url,
+                "date": ANY,
         },
         {
             "record_type": "tire_temperature",
@@ -161,8 +186,9 @@ def test_get_tire_temperatures() -> None:
             "game": "F1 26",
             "compound": "C2",
             "temperature_celsius": "85 - 115",
-            "temperature_fahrenheit": "185 - 239",
-            "source_url": ExcelFileF126Collector.spreadsheet_url,
+                "temperature_fahrenheit": "185 - 239",
+                "source_url": ExcelFileF126Collector.spreadsheet_url,
+                "date": ANY,
         },
     ]
 
@@ -176,8 +202,9 @@ def test_get_engine_temperatures() -> None:
             "game": "F1 26",
             "temperature_celsius": "65",
             "temperature_fahrenheit": "149",
-            "power_percent": "96",
-            "source_url": ExcelFileF126Collector.spreadsheet_url,
+                "power_percent": "96",
+                "source_url": ExcelFileF126Collector.spreadsheet_url,
+                "date": ANY,
         },
         {
             "record_type": "engine_temperature",
@@ -186,7 +213,8 @@ def test_get_engine_temperatures() -> None:
             "game": "F1 26",
             "temperature_celsius": "75",
             "temperature_fahrenheit": "167",
-            "power_percent": "97",
-            "source_url": ExcelFileF126Collector.spreadsheet_url,
+                "power_percent": "97",
+                "source_url": ExcelFileF126Collector.spreadsheet_url,
+                "date": ANY,
         },
     ]
