@@ -28,5 +28,5 @@ class F1SetupLapsMapper(BaseMapper):
             weather=item.get("weather"),
             setup=setup,
             source_url=item.get("url"),
-            lap_date=datetime.datetime.now().isoformat(),
+            collector_date=datetime.datetime.now().isoformat(),
         )

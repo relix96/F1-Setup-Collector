@@ -13,7 +13,7 @@ class SetupDTO:
     weather: Optional[str] = None
     setup: Optional[Dict[str, Any]] = None
     source_url: Optional[str] = None
-    lap_date: Optional[str] = None
+    collector_date: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

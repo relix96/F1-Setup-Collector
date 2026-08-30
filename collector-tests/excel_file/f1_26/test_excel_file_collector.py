@@ -24,9 +24,9 @@ class FakeResponse:
 
 
 CSV = """DO NOT REQUEST EDITOR ACCESS,,,,
-Circuit,Aero,Differential,Susp. geometry,Suspension,Brakes,Tires Q,Tires R,Compounds,Strategy (50%),Laps 50%,Creation date,Notes
-Australia,30-0q / 42-15r,100-45q 60r,LLLL,41-38-1-5-21-47,98/56,29.5 20.5,29.5 20.5,C3-C5,MH 11-13,29,24/06/2026,lico hell
-China,50-22,100-65,LLLL,41-41-1-4-22-46,98/57,29.5 20.5,29.5 20.5,C2-C4,MH 10-12,28,Theory,save ERS
+Circuit,Aero,Differential,Susp. geometry,Suspension,Brakes,Tires Q,Tires R,Compounds,Strategy (50%),Fuel 50%,Laps 50%,Creation date,Notes
+Australia,30-0q / 42-15r,100-45q 60r,LLLL,41-38-1-5-21-47,98/56,29.5 20.5,29.5 20.5,C3-C5,MH 11-13,27.5 laps / -1.9,29,24/06/2026,lico hell
+China,50-22,100-65,LLLL,41-41-1-4-22-46,98/57,29.5 20.5,29.5 20.5,C2-C4,MH 10-12,,28,Theory,save ERS
 ,,,,,,,,,,,,
 Tire Temperatures,,,,,,,,,,,,
 Compound,Temp Range (°C),Temp Range (°F),,,,,,,,,,
@@ -70,12 +70,12 @@ def test_run_maps_spreadsheet_setup() -> None:
     assert setups[0]["game"] == "F1 26"
     assert setups[0]["weather"] == "dry"
     collected_at = datetime.datetime.strptime(
-        setups[0]["date"], "%d/%m/%Y %H:%M:%S"
+        setups[0]["collector_date"], "%d/%m/%Y %H:%M:%S"
     )
     assert collected_at.date() == datetime.date.today()
     assert setups[0]["setup"]["aero"] == "30-0q / 42-15r"
     assert setups[0]["setup"]["notes"] == "lico hell"
-    assert setups[0]["setup"]["fuel_50_percent"] is None
+    assert setups[0]["setup"]["fuel_50_percent"] == "27.5 laps / -1.9"
     assert [record["record_type"] for record in records[2:]] == [
         "tire_temperature",
         "tire_temperature",
@@ -84,20 +84,8 @@ def test_run_maps_spreadsheet_setup() -> None:
     ]
 
 
-def test_accepts_new_optional_spreadsheet_columns() -> None:
-    csv_with_fuel = CSV.replace(
-        "Strategy (50%),Laps 50%",
-        "Strategy (50%),Fuel 50%,Laps 50%",
-    ).replace(
-        "C3-C5,MH 11-13,29",
-        "C3-C5,MH 11-13,27.5 laps / -1.9,29",
-    ).replace(
-        "C2-C4,MH 10-12,28",
-        "C2-C4,MH 10-12,,28",
-    )
-    collector = ExcelFileF126Collector()
-    collector.request_api = lambda *args, **kwargs: FakeResponse(csv_with_fuel)
-
+def test_maps_fuel_50_percent() -> None:
+    collector = get_collector()
     setups = [
         record for record in collector.run() if "record_type" not in record
     ]
@@ -177,7 +165,7 @@ def test_get_tire_temperatures() -> None:
             "temperature_celsius": "95 - 115",
                 "temperature_fahrenheit": "203 - 239",
                 "source_url": ExcelFileF126Collector.spreadsheet_url,
-                "date": ANY,
+                "collector_date": ANY,
         },
         {
             "record_type": "tire_temperature",
@@ -188,7 +176,7 @@ def test_get_tire_temperatures() -> None:
             "temperature_celsius": "85 - 115",
                 "temperature_fahrenheit": "185 - 239",
                 "source_url": ExcelFileF126Collector.spreadsheet_url,
-                "date": ANY,
+                "collector_date": ANY,
         },
     ]
 
@@ -204,7 +192,7 @@ def test_get_engine_temperatures() -> None:
             "temperature_fahrenheit": "149",
                 "power_percent": "96",
                 "source_url": ExcelFileF126Collector.spreadsheet_url,
-                "date": ANY,
+                "collector_date": ANY,
         },
         {
             "record_type": "engine_temperature",
@@ -215,6 +203,6 @@ def test_get_engine_temperatures() -> None:
             "temperature_fahrenheit": "167",
                 "power_percent": "97",
                 "source_url": ExcelFileF126Collector.spreadsheet_url,
-                "date": ANY,
+                "collector_date": ANY,
         },
     ]

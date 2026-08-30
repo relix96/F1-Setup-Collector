@@ -42,7 +42,7 @@ class ExcelFileF126Mapper(BaseMapper):
             weather="dry",
             setup=setup,
             source_url=self.source_url,
-            date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
+            collector_date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
         )
 
     def map_tire_temperature(
@@ -58,7 +58,7 @@ class ExcelFileF126Mapper(BaseMapper):
             temperature_celsius=item.get("Temp Range (°C)", ""),
             temperature_fahrenheit=item.get("Temp Range (°F)", ""),
             source_url=self.source_url,
-            date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
+            collector_date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
         )
 
     def map_engine_temperature(
@@ -74,7 +74,7 @@ class ExcelFileF126Mapper(BaseMapper):
             temperature_fahrenheit=item.get("Temp (°F)", ""),
             power_percent=item.get("Power %", ""),
             source_url=self.source_url,
-            date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
+            collector_date=datetime.datetime.today().strftime("%d/%m/%Y %H:%M:%S"),
         )
 
     def map_tire_temperatures(

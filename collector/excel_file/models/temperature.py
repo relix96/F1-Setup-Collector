@@ -12,7 +12,7 @@ class TireTemperatureDTO:
     temperature_celsius: str
     temperature_fahrenheit: str
     source_url: str
-    date: str
+    collector_date: str
 
     def to_dict(self) -> Dict[str, str]:
         return asdict(self)
@@ -28,7 +28,7 @@ class EngineTemperatureDTO:
     temperature_fahrenheit: str
     power_percent: str
     source_url: str
-    date: str
+    collector_date: str
 
     def to_dict(self) -> Dict[str, str]:
         return asdict(self)

@@ -29,9 +29,17 @@ class F1Laps_F1_26_CollectorTest:
         assert collector.SourceId is SourceId.F1_LAPS
 
     def test_mapper_uses_registered_source_id(self) -> None:
-        setup = F1SetupLapsMapper().map({"id": "setup-1"}).to_dict()
+        setup = F1SetupLapsMapper().map(
+            {
+                "id": "setup-1",
+                "setup": {"date": "Aug. 30, 2026"},
+            }
+        ).to_dict()
 
         assert setup["source"] == SourceId.F1_LAPS.value
+        assert setup["collector_date"]
+        assert setup["setup"]["date"] == "Aug. 30, 2026"
+        assert "lap_date" not in setup
 
     def test_mapper_groups_settings_like_the_site(self) -> None:
         setup = F1SetupLapsMapper().map(
