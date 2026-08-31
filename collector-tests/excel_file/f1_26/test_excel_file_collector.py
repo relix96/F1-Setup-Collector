@@ -11,7 +11,7 @@ from collector.database import (
     DatabaseEnvironment,
     connect_database,
     is_guid,
-    upsert_record,
+    insert_record,
 )
 from collector.enums import GameId, SourceId
 from collector.excel_file.f1_26.collector import ExcelFileF126Collector
@@ -118,7 +118,7 @@ def test_run_gets_all_real_setups_from_excel_file() -> None:
         assert all(setup["circuit"] for setup in setups)
 
         for record in records:
-            upsert_record(collection, record)
+            insert_record(collection, record)
 
         expected_source_ids = {record["source_id"] for record in records}
         saved_source_ids = {

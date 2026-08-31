@@ -1,7 +1,7 @@
 import pytest
 
 import collector.database as database
-from collector.database import DatabaseEnvironment
+from collector.database import DatabaseEnvironment, insert_record
 
 
 def test_sandbox_uses_local_mongodb(monkeypatch) -> None:
@@ -39,3 +39,24 @@ def test_tests_can_select_database_environment(
 def test_rejects_unknown_database_environment() -> None:
     with pytest.raises(ValueError, match="Invalid database environment"):
         database.get_database_environment("staging")
+
+
+def test_every_observation_is_inserted_with_a_new_id() -> None:
+    class RecordingCollection:
+        def __init__(self) -> None:
+            self.documents = []
+
+        def insert_one(self, document) -> None:
+            self.documents.append(document)
+
+    collection = RecordingCollection()
+    item = {"source": "f1_laps", "source_id": "setup-1"}
+
+    first_id = insert_record(collection, item)
+    second_id = insert_record(collection, item)
+
+    assert first_id != second_id
+    assert [document["_id"] for document in collection.documents] == [
+        first_id,
+        second_id,
+    ]

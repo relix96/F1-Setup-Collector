@@ -58,6 +58,14 @@ def connect_database(
 
     client = MongoClient(get_mongodb_uri(environment))
     collection = client[MONGODB_DATABASE][MONGODB_COLLECTION]
+    collection.create_index(
+        [("collector_run_id", 1), ("collector_date", -1)],
+        name="ix_collector_run_date",
+    )
+    collection.create_index(
+        [("source", 1), ("source_id", 1), ("collector_date", -1)],
+        name="ix_source_external_date",
+    )
     return client, collection
 
 
@@ -71,22 +79,9 @@ def is_guid(value: Any) -> bool:
         return False
 
 
-def upsert_record(collection: Any, item: dict[str, Any]) -> None:
-    """Store a record with a persistent GUID and migrate its legacy id."""
-    logical_key = {
-        "source": item["source"],
-        "source_id": item["source_id"],
-    }
-    existing = collection.find_one(logical_key, {"_id": 1})
+def insert_record(collection: Any, item: dict[str, Any]) -> str:
+    """Store every collection observation as an immutable MongoDB document."""
 
-    if existing is not None and is_guid(existing.get("_id")):
-        document_id = existing["_id"]
-    else:
-        document_id = str(uuid4())
-        collection.delete_many(logical_key)
-
-    collection.replace_one(
-        {"_id": document_id},
-        {"_id": document_id, **item},
-        upsert=True,
-    )
+    document_id = str(uuid4())
+    collection.insert_one({"_id": document_id, **item})
+    return document_id

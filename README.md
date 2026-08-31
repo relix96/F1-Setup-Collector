@@ -40,9 +40,13 @@ As tabelas auxiliares da folha estão disponíveis através de
 `get_tire_temperatures()`, `get_engine_temperatures()` ou, em conjunto,
 `get_reference_data()`.
 
+Cada execução recebe um `collector_run_id`. Todos os registos são inseridos como
+observações imutáveis com um `_id` novo e `collector_date` em UTC, mesmo quando
+os valores são iguais aos de uma execução anterior.
+
 O método `run()` emite primeiro os setups e depois os registos
 `tire_temperature` e `engine_temperature`. Todos incluem um `source_id` estável
-para permitir upsert na base de dados.
+para permitir que a API associe observações do mesmo registo lógico.
 
 O Selenium é usado exclusivamente no teste de integração:
 
