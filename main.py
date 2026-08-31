@@ -1,5 +1,6 @@
 import argparse
 from datetime import UTC, datetime
+import os
 import time
 from typing import Any, Optional
 from uuid import uuid4
@@ -60,7 +61,7 @@ def run() -> int:
 
     selected_game = GameId(args.game) if args.game else None
     selected_source = SourceId(args.source) if args.source else None
-    collector_run_id = str(uuid4())
+    collector_run_id = os.getenv("COLLECTOR_RUN_ID") or str(uuid4())
     failed_collectors = 0
     collector_keys = [ 
         key

@@ -44,6 +44,16 @@ Cada execução recebe um `collector_run_id`. Todos os registos são inseridos c
 observações imutáveis com um `_id` novo e `collector_date` em UTC, mesmo quando
 os valores são iguais aos de uma execução anterior.
 
+Em produção, o agendador pode definir `COLLECTOR_RUN_ID`. Se não o fizer, o
+collector continua a gerar automaticamente um UUID novo.
+
+## Docker
+
+```bash
+docker build -t f1-setup-collector:production .
+docker run --rm --env-file .env f1-setup-collector:production
+```
+
 O método `run()` emite primeiro os setups e depois os registos
 `tire_temperature` e `engine_temperature`. Todos incluem um `source_id` estável
 para permitir que a API associe observações do mesmo registo lógico.

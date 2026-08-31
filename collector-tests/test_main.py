@@ -150,6 +150,30 @@ def test_run_returns_failure_when_a_collector_fails(monkeypatch) -> None:
     assert main.run() == 1
 
 
+def test_run_uses_collector_run_id_from_environment(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["main.py", "--source", "f1_laps"])
+    monkeypatch.setenv("COLLECTOR_RUN_ID", "scheduled-run")
+
+    class FakeClient:
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        main,
+        "connect_database",
+        lambda environment: (FakeClient(), object()),
+    )
+    run_ids = []
+    monkeypatch.setattr(
+        main,
+        "run_source",
+        lambda *args, **kwargs: run_ids.append(kwargs["collector_run_id"]),
+    )
+
+    assert main.run() == 0
+    assert run_ids == ["scheduled-run"]
+
+
 @pytest.mark.live
 def test_run_scrapes_all_collectors(monkeypatch) -> None:
     """Run every registered collector against its real website."""
