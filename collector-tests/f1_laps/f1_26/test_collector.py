@@ -53,6 +53,7 @@ class F1Laps_F1_26_CollectorTest:
                         "rear_wing": "35",
                         "differential_on_throttle": "80%",
                         "differential_off_throttle": "50%",
+                        "engine_braking": "35%",
                         "front_camber": "-3.50˚",
                         "rear_camber": "-2.00˚",
                         "front_toe": "0.00˚",
@@ -84,6 +85,7 @@ class F1Laps_F1_26_CollectorTest:
             "transmission": {
                 "differential_on_throttle": "80%",
                 "differential_off_throttle": "50%",
+                "engine_braking": "35%",
             },
             "suspension_geometry": {
                 "front_camber": "-3.50˚",

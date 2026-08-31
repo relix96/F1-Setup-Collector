@@ -8,6 +8,8 @@ from uuid import uuid4
 from collector.collectorFactory import CollectorFactory
 from collector.database import DatabaseEnvironment, connect_database, insert_record
 from collector.enums import GameId, SourceId
+from collector.queue import RedisSetupPublisher
+from collector.settings import REDIS_SETUP_STREAM, REDIS_URL
 from collector.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,6 +20,7 @@ def run_source(
     source_id: SourceId,
     collection: Optional[Any] = None,
     collector_run_id: str | None = None,
+    publisher: RedisSetupPublisher | None = None,
 ) -> int:
     logger.info("Starting collector: %s/%s", game_id.value, source_id.value)
     started_at = time.perf_counter()
@@ -33,7 +36,18 @@ def run_source(
                     "collector_run_id": active_run_id,
                     "collector_date": datetime.now(UTC),
                 }
-                insert_record(collection, observation)
+                document_id = insert_record(collection, observation)
+                if publisher is not None and isinstance(observation.get("setup"), dict):
+                    try:
+                        publisher.publish(document_id)
+                    except Exception as error:
+                        # MongoDB is authoritative. The importer reconciles pending
+                        # documents if Redis is temporarily unavailable.
+                        logger.warning(
+                            "Redis publish failed for MongoDB document %s: %s",
+                            document_id,
+                            type(error).__name__,
+                        )
             collected_count += 1
             # Keep console output from aborting collection on Windows consoles
             # whose legacy encoding cannot represent values such as ``-3.50˚``.
@@ -73,6 +87,7 @@ def run() -> int:
     # The application always writes to the production server. Tests select their
     # own profile through TEST_MONGODB_ENV in collector.database.
     client, collection = connect_database(DatabaseEnvironment.PRODUCTION)
+    publisher = RedisSetupPublisher.from_url(REDIS_URL, REDIS_SETUP_STREAM)
     try:
         for key in collector_keys:
             try:
@@ -81,12 +96,15 @@ def run() -> int:
                     key.source,
                     collection,
                     collector_run_id=collector_run_id,
+                    publisher=publisher,
                 )
             except Exception:
                 # One unavailable website must not prevent the remaining collectors.
                 failed_collectors += 1
                 logger.exception("Collector failed: %s/%s", key.game.value, key.source.value)
     finally:
+        if publisher is not None:
+            publisher.close()
         client.close()
         logger.info(
             "All collectors finished | run_id=%s | failures=%d | duration=%.2fs",

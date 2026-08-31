@@ -114,6 +114,7 @@ def test_run_uses_source_from_command_line(monkeypatch) -> None:
         source_id,
         collection,
         collector_run_id=None,
+        publisher=None,
     ) -> None:
         called_sources.append(
             (game_id, source_id, collection, collector_run_id)

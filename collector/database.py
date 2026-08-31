@@ -1,4 +1,8 @@
 from enum import Enum
+from datetime import date, datetime
+from decimal import Decimal
+from hashlib import sha256
+import json
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -66,6 +70,15 @@ def connect_database(
         [("source", 1), ("source_id", 1), ("collector_date", -1)],
         name="ix_source_external_date",
     )
+    collection.create_index(
+        [
+            ("processing.status", 1),
+            ("processing.next_attempt_at", 1),
+            ("processing.lease_expires_at", 1),
+            ("collector_date", 1),
+        ],
+        name="ix_processing_queue",
+    )
     return client, collection
 
 
@@ -83,5 +96,44 @@ def insert_record(collection: Any, item: dict[str, Any]) -> str:
     """Store every collection observation as an immutable MongoDB document."""
 
     document_id = str(uuid4())
-    collection.insert_one({"_id": document_id, **item})
+    document = {**item, "_id": document_id}
+    if isinstance(item.get("setup"), dict):
+        document["processing"] = {
+            "status": "pending",
+            "attempts": 0,
+            "last_error": None,
+            "last_attempt_at": None,
+            "processed_at": None,
+            "next_attempt_at": None,
+            "worker_id": None,
+            "lease_expires_at": None,
+            "idempotency_key": document_id,
+            "raw_hash": build_raw_hash(item),
+            "normalizer_version": None,
+        }
+    collection.insert_one(document)
     return document_id
+
+
+def build_raw_hash(item: dict[str, Any]) -> str:
+    """Hash raw content while ignoring collection and processing trace fields."""
+
+    content = {
+        key: value
+        for key, value in item.items()
+        if key not in {"_id", "collector_date", "collector_run_id", "processing"}
+    }
+    serialized = json.dumps(
+        content,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=_serialize_hash_value,
+    )
+    return sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _serialize_hash_value(value: object) -> str:
+    if isinstance(value, (date, datetime, Decimal, UUID)):
+        return str(value)
+    raise TypeError(f"Unsupported raw hash value: {type(value).__name__}")
