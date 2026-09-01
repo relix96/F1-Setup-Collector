@@ -54,6 +54,7 @@ def test_factory_returns_excel_file_collector() -> None:
 
     assert isinstance(collector, ExcelFileF126Collector)
     assert isinstance(collector.mapper, ExcelFileF126Mapper)
+    assert collector.ProxySupported is True
 
 
 def test_get_tracks_ignores_tables_after_the_setup_table() -> None:

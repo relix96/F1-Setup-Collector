@@ -1,30 +1,49 @@
 import re
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, Iterator, List
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+import time
+from typing import Any, ClassVar, DefaultDict, Dict, Iterator, List
 from urllib.parse import unquote, urljoin, urlparse
-from typing import ClassVar
-from collector.enums import GameId
-
 
 from bs4 import BeautifulSoup
 
+from collector.enums import GameId
 from collector.f1_laps.mapper import F1SetupLapsMapper
 from collector.f1_laps.f1_laps_collector import F1LapsCollector
-from collector.f1_laps.utils.constants import (DETAIL_LABELS, SETTING_LABELS)
+from collector.f1_laps.utils.constants import DETAIL_LABELS, SETTING_LABELS
+from collector.settings import COLLECTOR_CONCURRENCY
+from collector.utils.logger import get_logger
 
 
 TRACK_PATH = re.compile(r"/f1-\d+/setups/([a-z0-9_-]+)/?$", re.IGNORECASE)
 SETUP_PATH = re.compile(
     r"/f1-\d+/setups/([^/]+)/([0-9a-f]{8}-[0-9a-f-]{27,})/?$", re.IGNORECASE
 )
+logger = get_logger(__name__)
+
+
+class PartialCollectionError(RuntimeError):
+    """Raised after every unaffected track has finished."""
+
+    def __init__(self, failures: list[tuple[str, str, Exception]]) -> None:
+        affected = ", ".join(
+            f"{track}/{weather}:{type(error).__name__}"
+            for track, weather, error in failures
+        )
+        super().__init__(
+            f"{len(failures)} track/weather collection failure(s): {affected}"
+        )
+        self.failures = tuple(failures)
+
 
 class F1LapsF126Collector(F1LapsCollector):
     """Collect every F1Laps setup, ordered by track and dry/wet condition."""
     GameId = GameId.F1_26
-    game_url: ClassVar[str] = (F1LapsCollector.base_url + "f1-26/setups/"
-    )
+    game_url: ClassVar[str] = F1LapsCollector.base_url + "f1-26/setups/"
+
     def __init__(self) -> None:
-        super().__init__()        
+        super().__init__()
         self.mapper = F1SetupLapsMapper()
         self._tracks: Dict[str, Dict[str, str]] = {}
 
@@ -108,7 +127,7 @@ class F1LapsF126Collector(F1LapsCollector):
                 "car": element.get("data-car"),
             }
 
-    def get_tracks(self) -> List[str]:       
+    def get_tracks(self) -> List[str]:
         if not self.game_url:
             raise ValueError("Set url before running this collector")
 
@@ -122,7 +141,10 @@ class F1LapsF126Collector(F1LapsCollector):
         }
         return list(self._tracks)
 
-    def get_setups(self, track_name: str, weather: str
+    def get_setups(
+        self,
+        track_name: str,
+        weather: str,
     ) -> Iterator[Dict[str, Any]]:
         """Yield every setup for one track and one weather condition."""
         if weather not in ("dry", "wet"):
@@ -169,9 +191,94 @@ class F1LapsF126Collector(F1LapsCollector):
             setups.extend(self.get_setups(track_name, weather))
         return setups
 
+    def _collect_track_resiliently(
+        self,
+        track_name: str,
+        failures: list[tuple[str, str, Exception]],
+    ) -> Iterator[Dict[str, Any]]:
+        started_at = time.perf_counter()
+        collected = 0
+        failure_count_before = len(failures)
+        logger.info("Track collection started track=%s", track_name)
+        for weather in ("dry", "wet"):
+            try:
+                for setup in self.get_setups(track_name, weather):
+                    collected += 1
+                    yield setup
+            except Exception as error:
+                failures.append((track_name, weather, error))
+                logger.error(
+                    "Track collection error track=%s weather=%s error=%s",
+                    track_name,
+                    weather,
+                    type(error).__name__,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+        track_failures = len(failures) - failure_count_before
+        logger.info(
+            "Track collection finished track=%s status=%s records=%d "
+            "failures=%d duration=%.2fs",
+            track_name,
+            "partial" if track_failures else "success",
+            collected,
+            track_failures,
+            time.perf_counter() - started_at,
+        )
+
     def run(self) -> Iterator[Dict[str, Any]]:
-        for track_name in self.get_tracks():
-            yield from self.get_setups_by_track(track_name)
+        tracks = self.get_tracks()
+        if not tracks:
+            return
+        failures: list[tuple[str, str, Exception]] = []
+        if COLLECTOR_CONCURRENCY <= 1:
+            for track_name in tracks:
+                yield from self._collect_track_resiliently(track_name, failures)
+            if failures:
+                raise PartialCollectionError(failures)
+            return
+
+        output: Queue[tuple[str, object]] = Queue()
+
+        def collect_track(track_name: str) -> None:
+            track_failures: list[tuple[str, str, Exception]] = []
+            try:
+                for setup in self._collect_track_resiliently(
+                    track_name,
+                    track_failures,
+                ):
+                    output.put(("item", setup))
+            except Exception as error:
+                track_failures.append((track_name, "unknown", error))
+                logger.error(
+                    "Track worker error track=%s error=%s",
+                    track_name,
+                    type(error).__name__,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+            finally:
+                for failure in track_failures:
+                    output.put(("error", failure))
+                output.put(("done", track_name))
+
+        with ThreadPoolExecutor(
+            max_workers=min(COLLECTOR_CONCURRENCY, len(tracks)),
+            thread_name_prefix="f1laps-track",
+        ) as executor:
+            futures = [executor.submit(collect_track, track) for track in tracks]
+            completed = 0
+            while completed < len(futures):
+                kind, value = output.get()
+                if kind == "item":
+                    assert isinstance(value, dict)
+                    yield value
+                elif kind == "error":
+                    assert isinstance(value, tuple)
+                    failures.append(value)
+                else:
+                    completed += 1
+
+        if failures:
+            raise PartialCollectionError(failures)
 
     def collect_organized(self) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
         """Return ``{country: {dry: [...], wet: [...]}}`` for JSON export/storage."""

@@ -12,9 +12,18 @@ class ExcelFileF126Collector(BaseCollector):
 
     GameId = GameId.F1_26
     SourceId = SourceId.EXCEL_FILE
+    ProxySupported = True
 
-    spreadsheet_url: ClassVar[str] = ("https://docs.google.com/spreadsheets/d/1fUZKqMpARGJ1XEvsmGlOtN2_NVPOqLehPNiLH-YyYSI/edit?pli=1&gid=2082870794#gid=2082870794")
-    csv_url: ClassVar[str] = ("https://docs.google.com/spreadsheets/d/1fUZKqMpARGJ1XEvsmGlOtN2_NVPOqLehPNiLH-YyYSI/export?format=csv&gid=2082870794")
+    spreadsheet_url: ClassVar[str] = (
+        "https://docs.google.com/spreadsheets/d/"
+        "1fUZKqMpARGJ1XEvsmGlOtN2_NVPOqLehPNiLH-YyYSI/"
+        "edit?pli=1&gid=2082870794#gid=2082870794"
+    )
+    csv_url: ClassVar[str] = (
+        "https://docs.google.com/spreadsheets/d/"
+        "1fUZKqMpARGJ1XEvsmGlOtN2_NVPOqLehPNiLH-YyYSI/"
+        "export?format=csv&gid=2082870794"
+    )
     expected_headers: ClassVar[tuple[str, ...]] = (
         "Circuit",
         "Aero",
@@ -31,6 +40,7 @@ class ExcelFileF126Collector(BaseCollector):
         "Creation date",
         "Notes",
     )
+
     def __init__(self) -> None:
         super().__init__()
         self.mapper = ExcelFileF126Mapper(self.spreadsheet_url)

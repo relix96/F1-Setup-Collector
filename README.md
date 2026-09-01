@@ -67,9 +67,33 @@ poetry run pytest -m selenium -s
 Esse teste abre o Chrome visível e percorre todas as pistas, páginas dry/wet e
 detalhes dos setups. A suíte normal exclui os testes marcados com `selenium`.
 
-O proxy é opcional e deve ser configurado através de `PROXY_URL`. O ficheiro
-`proxies` contém a lista copiada do projeto de referência, mas a aplicação usa
-apenas o proxy indicado na variável de ambiente.
+O pool de proxies é opcional e está desativado por predefinição. Só a fonte
+F1Laps está explicitamente autorizada no código a usar o pool; fontes futuras
+têm de declarar essa autorização. O ficheiro local `proxies` nunca é incluído
+no Git nem na imagem Docker.
+
+Cada linha usa `host:port`, `host:port:user:password` ou uma URL HTTP(S). Ative
+com `PROXY_ENABLED=true` e configure `PROXY_FILE`. `COLLECTOR_CONCURRENCY`
+limita as pistas concorrentes, enquanto `MAX_REQUESTS_PER_MINUTE` continua a
+ser um teto único para a origem e não aumenta com o número de proxies.
+
+O gestor escolhe o proxy seguinte em round-robin/least-used. Por exemplo, três
+pedidos consecutivos podem usar `proxy-001`, `proxy-002` e `proxy-003`, mas cada
+aquisição continua sujeita ao intervalo global e ao limite por proxy. Um `429`
+coloca esse proxy em cooldown e reduz temporariamente a concorrência global.
+
+## Scheduler em produção
+
+O módulo `collector.scheduler` mantém o collector ativo como serviço da Stack
+Portainer. Por predefinição executa às 06:00 e 18:00 em `Europe/Lisbon`, grava o
+último slot concluído num volume persistente e recupera uma execução perdida
+depois de um restart. Configure através de `COLLECTOR_TIMEZONE`,
+`COLLECTOR_SCHEDULE_HOURS` e `COLLECTOR_FAILURE_RETRY_SECONDS`.
+
+O limite global configurado é 100 requests/minuto, com 4 pistas concorrentes, 10
+requests/minuto por proxy e 1 pedido concorrente por proxy. Aumente o limite
+global apenas de forma gradual e com autorização da fonte. O fallback direto
+exige `PROXY_ALLOW_DIRECT_FALLBACK=true`.
 
 ## Adicionar um website
 

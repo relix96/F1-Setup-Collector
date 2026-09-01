@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .env
+proxies
 .venv/
 .pytest_cache/
 selenium-*.log

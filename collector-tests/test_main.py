@@ -12,6 +12,7 @@ def test_run_source_runs_prints_and_closes_collector(
     capsys,
 ) -> None:
     events = []
+    monkeypatch.setattr(main, "COLLECTOR_LOG_RECORDS", True)
 
     class FakeCollector:
         def __init__(self) -> None:
@@ -76,6 +77,8 @@ def test_run_source_inserts_every_collected_item(monkeypatch) -> None:
 
 
 def test_run_source_prints_unicode_safely(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(main, "COLLECTOR_LOG_RECORDS", True)
+
     class FakeCollector:
         def run(self):
             yield {"front_camber": "-3.50˚"}
@@ -92,6 +95,34 @@ def test_run_source_prints_unicode_safely(monkeypatch, capsys) -> None:
     main.run_source(GameId.F1_26, SourceId.F1_LAPS)
 
     assert capsys.readouterr().out.strip() == "{'front_camber': '-3.50\\u02da'}"
+
+
+def test_run_source_logs_human_readable_collector_and_summary(
+    monkeypatch,
+    caplog,
+) -> None:
+    class FakeCollector:
+        def run(self):
+            yield {"source": "f1_laps"}
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        main.CollectorFactory,
+        "create_collector",
+        lambda game_id, source_id: FakeCollector(),
+    )
+
+    with caplog.at_level("INFO"):
+        main.run_source(
+            GameId.F1_26,
+            SourceId.F1_LAPS,
+            collector_run_id="visible-run",
+        )
+
+    assert "Collector started collector=F1Laps -> F1 26 run_id=visible-run" in caplog.text
+    assert "status=success records=1" in caplog.text
 
 
 def test_run_uses_source_from_command_line(monkeypatch) -> None:

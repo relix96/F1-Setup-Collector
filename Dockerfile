@@ -10,6 +10,8 @@ WORKDIR /app
 
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --create-home app \
+    && mkdir -p /var/lib/setup-collector \
+    && chown app:app /var/lib/setup-collector \
     && python -m pip install "poetry==2.1.3"
 
 COPY pyproject.toml poetry.lock README.md ./
@@ -17,7 +19,6 @@ RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY collector ./collector
 COPY main.py ./main.py
-COPY proxies ./proxies
 
 USER app
 

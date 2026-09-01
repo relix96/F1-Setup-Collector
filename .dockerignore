@@ -1,6 +1,7 @@
 .git
 .gitignore
 .env
+proxies
 .venv
 .pytest_cache
 .agents

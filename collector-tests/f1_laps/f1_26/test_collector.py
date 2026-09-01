@@ -1,10 +1,15 @@
 from dataclasses import dataclass
+from threading import Lock
+import time
 
 import pytest
 
 from collector.collectorFactory import CollectorFactory
 from collector.enums import GameId, SourceId
-from collector.f1_laps.f1_26.collector import F1LapsF126Collector
+from collector.f1_laps.f1_26.collector import (
+    F1LapsF126Collector,
+    PartialCollectionError,
+)
 from collector.f1_laps.mapper import F1SetupLapsMapper
 
 
@@ -179,12 +184,136 @@ class F1Laps_F1_26_CollectorTest:
             ("china", "wet"),
         ]
 
+    def test_run_limits_parallel_track_workers(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import collector.f1_laps.f1_26.collector as collector_module
+
+        collector = self.get_collector()
+        monkeypatch.setattr(collector_module, "COLLECTOR_CONCURRENCY", 2)
+        monkeypatch.setattr(
+            collector,
+            "get_tracks",
+            lambda: ["australia", "china", "japan", "bahrain"],
+        )
+        lock = Lock()
+        active = 0
+        maximum_active = 0
+
+        def fake_get_setups(track_name: str, weather: str):
+            nonlocal active, maximum_active
+            with lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            time.sleep(0.01)
+            yield {"circuit": track_name, "weather": weather}
+            with lock:
+                active -= 1
+
+        monkeypatch.setattr(collector, "get_setups", fake_get_setups)
+
+        results = list(collector.run())
+
+        assert len(results) == 8
+        assert maximum_active == 2
+
+    def test_run_reports_failure_and_continues_with_remaining_tracks(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        import collector.f1_laps.f1_26.collector as collector_module
+
+        collector = self.get_collector()
+        calls = []
+        monkeypatch.setattr(collector_module, "COLLECTOR_CONCURRENCY", 1)
+        monkeypatch.setattr(
+            collector,
+            "get_tracks",
+            lambda: ["australia", "china"],
+        )
+
+        def fake_get_setups(track_name: str, weather: str):
+            calls.append((track_name, weather))
+            if track_name == "australia" and weather == "dry":
+                raise RuntimeError("fixture failure")
+            yield {"circuit": track_name, "weather": weather}
+
+        monkeypatch.setattr(collector, "get_setups", fake_get_setups)
+        collected = []
+
+        with caplog.at_level("INFO"), pytest.raises(
+            PartialCollectionError,
+            match="australia/dry:RuntimeError",
+        ):
+            for setup in collector.run():
+                collected.append(setup)
+
+        assert calls == [
+            ("australia", "dry"),
+            ("australia", "wet"),
+            ("china", "dry"),
+            ("china", "wet"),
+        ]
+        assert collected == [
+            {"circuit": "australia", "weather": "wet"},
+            {"circuit": "china", "weather": "dry"},
+            {"circuit": "china", "weather": "wet"},
+        ]
+        assert (
+            "Track collection error track=australia weather=dry "
+            "error=RuntimeError"
+        ) in caplog.text
+        assert "Track collection finished track=china status=success" in caplog.text
+
+    def test_parallel_run_reports_failure_after_other_tracks_finish(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import collector.f1_laps.f1_26.collector as collector_module
+
+        collector = self.get_collector()
+        monkeypatch.setattr(collector_module, "COLLECTOR_CONCURRENCY", 2)
+        monkeypatch.setattr(
+            collector,
+            "get_tracks",
+            lambda: ["australia", "china"],
+        )
+
+        def fake_get_setups(track_name: str, weather: str):
+            if track_name == "australia" and weather == "dry":
+                raise RuntimeError("parallel fixture failure")
+            yield {"circuit": track_name, "weather": weather}
+
+        monkeypatch.setattr(collector, "get_setups", fake_get_setups)
+        collected = []
+
+        with pytest.raises(PartialCollectionError):
+            for setup in collector.run():
+                collected.append((setup["circuit"], setup["weather"]))
+
+        assert set(collected) == {
+            ("australia", "wet"),
+            ("china", "dry"),
+            ("china", "wet"),
+        }
+
     @pytest.mark.live
     def test_get_setups_by_track(self) -> None:
         collector = self.get_collector()
         setups = []
 
-        for track in ("australia", "china", "japan", "bahrain"):
+        for track in (
+            "australia",
+            "china",
+            "japan",
+            "bahrain",
+            "saudi_arabia",
+            "miami",
+            "canada",
+            "monaco",
+        ):
             setups.extend(collector.get_setups_by_track(track))
 
         assert isinstance(setups, list)

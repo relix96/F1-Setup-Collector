@@ -16,6 +16,7 @@ requests = "^2.32.0"
 pymongo = "^4.10.0"
 python-dotenv = "^1.0.1"
 redis = "^5.2.0"
+tzdata = "^2025.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

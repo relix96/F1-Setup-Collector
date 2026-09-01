@@ -7,6 +7,7 @@ from collector.f1_laps.mapper import F1SetupLapsMapper
 
 class F1LapsCollector(BaseCollector):
     SourceId = SourceId.F1_LAPS
+    ProxySupported = True
     base_url: ClassVar[str] = "https://www.f1laps.com/"
 
     def __init__(self) -> None:
