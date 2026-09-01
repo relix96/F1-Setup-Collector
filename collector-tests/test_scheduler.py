@@ -11,6 +11,7 @@ from collector.scheduler import (
     parse_schedule_hours,
     seconds_until,
 )
+from collector.utils.metrics import COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT
 
 
 LISBON = ZoneInfo("Europe/Lisbon")
@@ -71,6 +72,26 @@ def test_runs_missed_slot_once_and_persists_success(tmp_path) -> None:
     assert scheduler.state_file.read_text(encoding="utf-8") == (
         "2026-09-01T06:00:00+01:00"
     )
+    assert COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT._value.get() == datetime(
+        2026, 9, 1, 6, 0, tzinfo=LISBON
+    ).timestamp()
+
+
+def test_restores_last_success_metric_from_persistent_state(tmp_path) -> None:
+    state_file = tmp_path / "last-slot"
+    state_file.write_text("2026-09-01T06:00:00+01:00", encoding="utf-8")
+    scheduler = CollectorScheduler(
+        timezone=LISBON,
+        hours=(6, 18),
+        state_file=state_file,
+        failure_retry_seconds=900,
+    )
+
+    scheduler.restore_last_success_metric()
+
+    assert COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT._value.get() == datetime(
+        2026, 9, 1, 6, 0, tzinfo=LISBON
+    ).timestamp()
 
 
 def test_failed_slot_is_not_marked_and_uses_retry_delay(tmp_path) -> None:

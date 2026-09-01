@@ -13,6 +13,10 @@ COLLECTOR_RUNS_TOTAL = Counter("setup_collector_runs_total", "Collector executio
 COLLECTOR_RUN_DURATION = Histogram("setup_collector_run_duration_seconds", "Duration of each collector execution.", ("source", "game"))
 COLLECTOR_RECORDS_TOTAL = Counter("setup_collector_records_total", "Raw setup records collected and persisted.", ("source", "game", "outcome"))
 COLLECTOR_LAST_SUCCESS = Gauge("setup_collector_last_success_timestamp_seconds", "Unix timestamp of the most recent successful collector execution.", ("source", "game"))
+COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT = Gauge(
+    "setup_collector_scheduler_last_successful_slot_timestamp_seconds",
+    "Unix timestamp of the most recent successfully completed scheduler slot.",
+)
 COLLECTION_RUN_DURATION = Histogram("setup_collection_run_duration_seconds", "Duration of a complete multi-source collection run.")
 COLLECTION_RUNS_TOTAL = Counter("setup_collection_runs_total", "Complete multi-source collection runs.", ("outcome",))
 REDIS_PUBLISH_TOTAL = Counter("setup_collector_redis_publish_total", "Redis setup notifications published by the collector.", ("outcome",))

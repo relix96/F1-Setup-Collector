@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from collector.utils.logger import get_logger
 from collector.settings import COLLECTOR_METRICS_PORT, METRICS_BIND_ADDRESS, METRICS_ENABLED
-from collector.utils.metrics import start_metrics_server
+from collector.utils.metrics import (COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT, start_metrics_server,)
 from main import run as run_collectors
 
 
@@ -104,6 +104,27 @@ class CollectorScheduler:
         temporary = self.state_file.with_suffix(".tmp")
         temporary.write_text(self._slot_id(slot), encoding="utf-8")
         temporary.replace(self.state_file)
+        COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT.set(slot.timestamp())
+
+    def restore_last_success_metric(self) -> None:
+        """Restore the scheduler success gauge from its persistent state."""
+
+        value = self._last_successful_slot()
+        if value is None:
+            COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT.set(0)
+            return
+        try:
+            slot = datetime.fromisoformat(value)
+        except ValueError:
+            COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT.set(0)
+            logger.warning(
+                "Ignoring invalid scheduler state file path=%s",
+                self.state_file,
+            )
+            return
+        if slot.tzinfo is None:
+            slot = slot.replace(tzinfo=self.timezone)
+        COLLECTOR_SCHEDULER_LAST_SUCCESSFUL_SLOT.set(slot.timestamp())
 
     def tick(self) -> float:
         """Run an overdue slot once and return seconds until the next action."""
@@ -144,6 +165,7 @@ class CollectorScheduler:
         return delay
 
     def run_forever(self, stop: Event) -> None:
+        self.restore_last_success_metric()
         logger.info(
             "Collector scheduler ready hours=%s timezone=%s",
             ",".join(f"{hour:02d}:00" for hour in self.hours),

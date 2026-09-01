@@ -20,3 +20,7 @@ def test_internal_metrics_server_exposes_prometheus_format() -> None:
     finally:
         server.close()
     assert "setup_collector_http_requests_total" in content
+    assert (
+        "setup_collector_scheduler_last_successful_slot_timestamp_seconds"
+        in content
+    )
