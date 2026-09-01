@@ -11,6 +11,15 @@ from collector.enums import GameId, SourceId
 from collector.queue import RedisSetupPublisher
 from collector.settings import COLLECTOR_LOG_RECORDS, REDIS_SETUP_STREAM, REDIS_URL
 from collector.utils.logger import get_logger
+from collector.utils.metrics import (
+    COLLECTION_RUN_DURATION,
+    COLLECTION_RUNS_TOTAL,
+    COLLECTOR_LAST_SUCCESS,
+    COLLECTOR_RECORDS_TOTAL,
+    COLLECTOR_RUN_DURATION,
+    COLLECTOR_RUNS_TOTAL,
+    REDIS_PUBLISH_TOTAL,
+)
 
 logger = get_logger(__name__)
 
@@ -60,7 +69,9 @@ def run_source(
                 if publisher is not None and isinstance(observation.get("setup"), dict):
                     try:
                         publisher.publish(document_id)
+                        REDIS_PUBLISH_TOTAL.labels(outcome="success").inc()
                     except Exception as error:
+                        REDIS_PUBLISH_TOTAL.labels(outcome="failed").inc()
                         # MongoDB is authoritative. The importer reconciles pending
                         # documents if Redis is temporarily unavailable.
                         logger.warning(
@@ -77,6 +88,13 @@ def run_source(
     finally:
         if collector is not None:
             collector.close()
+        duration = time.perf_counter() - started_at
+        outcome = "success" if succeeded else "failed"
+        COLLECTOR_RUNS_TOTAL.labels(source=source_id.value, game=game_id.value, outcome=outcome).inc()
+        COLLECTOR_RUN_DURATION.labels(source=source_id.value, game=game_id.value).observe(duration)
+        COLLECTOR_RECORDS_TOTAL.labels(source=source_id.value, game=game_id.value, outcome=outcome).inc(collected_count)
+        if succeeded:
+            COLLECTOR_LAST_SUCCESS.labels(source=source_id.value, game=game_id.value).set_to_current_time()
         logger.info(
             "Collector finished collector=%s run_id=%s status=%s "
             "records=%d duration=%.2fs",
@@ -84,7 +102,7 @@ def run_source(
             active_run_id,
             "success" if succeeded else "failed",
             collected_count,
-            time.perf_counter() - started_at,
+            duration,
         )
     return collected_count
 
@@ -140,6 +158,10 @@ def run() -> int:
         if publisher is not None:
             publisher.close()
         client.close()
+        duration = time.perf_counter() - started_at
+        outcome = "failed" if failed_collectors else "success"
+        COLLECTION_RUNS_TOTAL.labels(outcome=outcome).inc()
+        COLLECTION_RUN_DURATION.observe(duration)
         logger.info(
             "Raw documents handed to import pipeline run_id=%s",
             collector_run_id,
@@ -152,7 +174,7 @@ def run() -> int:
             len(collector_keys),
             failed_collectors,
             total_records,
-            time.perf_counter() - started_at,
+            duration,
         )
     return 1 if failed_collectors else 0
 

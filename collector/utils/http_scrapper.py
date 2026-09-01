@@ -28,9 +28,14 @@ from collector.settings import (
 )
 from collector.utils.logger import get_logger
 from collector.utils.metrics import (
+    HTTP_429_TOTAL,
     HTTP_ERRORS_TOTAL,
     HTTP_REQUEST_DURATION,
     HTTP_REQUESTS_TOTAL,
+    HTTP_RETRIES_TOTAL,
+    HTTP_TIMEOUTS_TOTAL,
+    status_class,
+    update_proxy_state_metrics,
 )
 from collector.utils.proxies import (
     ProxyEndpoint,
@@ -181,7 +186,6 @@ class HttpScrapper:
                 )
                 started = time.monotonic()
                 try:
-                    HTTP_REQUESTS_TOTAL.labels(source=host, method=method).inc()
                     with self._metrics_lock:
                         self._request_count += 1
                     response = session.request(
@@ -197,6 +201,11 @@ class HttpScrapper:
                     latency = time.monotonic() - started
                     status = int(response.status_code)
                     last_status = status if status > 0 else "connection_error"
+                    HTTP_REQUESTS_TOTAL.labels(
+                        source=host,
+                        method=method,
+                        status_class=status_class(last_status),
+                    ).inc()
                     self.proxy_manager.report(
                         lease,
                         latency=latency,
@@ -212,14 +221,21 @@ class HttpScrapper:
                         return response.json() if json_response else response
                     HTTP_ERRORS_TOTAL.labels(
                         source=host,
-                        status_code=last_status,
+                        reason=status_class(last_status),
                     ).inc()
+                    if last_status == 429:
+                        HTTP_429_TOTAL.labels(source=host).inc()
                     with self._metrics_lock:
                         self._error_count += 1
                 except (requests.RequestException, CurlRequestsError) as error:
                     latency = time.monotonic() - started
                     response = getattr(error, "response", None)
                     last_status = self._transport_error_status(error)
+                    HTTP_REQUESTS_TOTAL.labels(
+                        source=host,
+                        method=method,
+                        status_class=status_class(last_status),
+                    ).inc()
                     self.proxy_manager.report(
                         lease,
                         latency=latency,
@@ -232,8 +248,10 @@ class HttpScrapper:
                     )
                     HTTP_ERRORS_TOTAL.labels(
                         source=host,
-                        status_code=last_status,
+                        reason=status_class(last_status),
                     ).inc()
+                    if last_status == "timeout":
+                        HTTP_TIMEOUTS_TOTAL.labels(source=host).inc()
                     with self._metrics_lock:
                         self._error_count += 1
                         self._latency_total += latency
@@ -247,6 +265,10 @@ class HttpScrapper:
                 safe_target,
             )
             if attempt + 1 < MAX_RETRIES:
+                HTTP_RETRIES_TOTAL.labels(
+                    source=host,
+                    reason=status_class(last_status),
+                ).inc()
                 backoff = min(30.0, 2**attempt) + random.uniform(0.0, 1.0)
                 time.sleep(backoff)
 
@@ -265,6 +287,7 @@ class HttpScrapper:
                 close()
 
         snapshot = self.proxy_manager.snapshot()
+        update_proxy_state_metrics(snapshot)
         elapsed = max(0.001, time.monotonic() - self._started_at)
         with self._metrics_lock:
             request_count = self._request_count

@@ -12,6 +12,8 @@ from typing import Callable, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from collector.utils.logger import get_logger
+from collector.settings import COLLECTOR_METRICS_PORT, METRICS_BIND_ADDRESS, METRICS_ENABLED
+from collector.utils.metrics import start_metrics_server
 from main import run as run_collectors
 
 
@@ -191,13 +193,18 @@ def build_scheduler() -> CollectorScheduler:
 
 def main() -> None:
     stop = Event()
+    metrics_server = start_metrics_server(METRICS_BIND_ADDRESS, COLLECTOR_METRICS_PORT) if METRICS_ENABLED else None
 
     def request_stop(*_: object) -> None:
         stop.set()
 
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
-    build_scheduler().run_forever(stop)
+    try:
+        build_scheduler().run_forever(stop)
+    finally:
+        if metrics_server is not None:
+            metrics_server.close()
 
 
 if __name__ == "__main__":
