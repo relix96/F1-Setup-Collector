@@ -208,7 +208,9 @@ class F1LapsF126Collector(F1LapsCollector):
             except Exception as error:
                 failures.append((track_name, weather, error))
                 logger.error(
-                    "Track collection error track=%s weather=%s error=%s",
+                    "event=collector_error collector=f1_laps_f1_26 "
+                    "source=f1_laps game=f1_26 scope=track track=%s "
+                    "weather=%s error_type=%s",
                     track_name,
                     weather,
                     type(error).__name__,
@@ -250,7 +252,9 @@ class F1LapsF126Collector(F1LapsCollector):
             except Exception as error:
                 track_failures.append((track_name, "unknown", error))
                 logger.error(
-                    "Track worker error track=%s error=%s",
+                    "event=collector_error collector=f1_laps_f1_26 "
+                    "source=f1_laps game=f1_26 scope=track_worker track=%s "
+                    "weather=unknown error_type=%s",
                     track_name,
                     type(error).__name__,
                     exc_info=(type(error), error, error.__traceback__),

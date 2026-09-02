@@ -182,6 +182,41 @@ def test_run_returns_failure_when_a_collector_fails(monkeypatch) -> None:
     assert main.run() == 1
 
 
+def test_run_logs_structured_summary_and_collector_error(
+    monkeypatch,
+    caplog,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["main.py"])
+
+    class FakeClient:
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        main,
+        "connect_database",
+        lambda environment: (FakeClient(), object()),
+    )
+    monkeypatch.setattr(
+        main,
+        "run_source",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("failed")),
+    )
+
+    with caplog.at_level("INFO"):
+        assert main.run() == 1
+
+    assert "event=collection_run_started" in caplog.text
+    assert "event=collector_error" in caplog.text
+    assert "collector=" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "event=collection_run_finished" in caplog.text
+    assert "started_at=" in caplog.text
+    assert "finished_at=" in caplog.text
+    assert "status=failed" in caplog.text
+    assert "duration_seconds=" in caplog.text
+
+
 def test_run_uses_collector_run_id_from_environment(monkeypatch) -> None:
     monkeypatch.setattr(sys, "argv", ["main.py", "--source", "f1_laps"])
     monkeypatch.setenv("COLLECTOR_RUN_ID", "scheduled-run")

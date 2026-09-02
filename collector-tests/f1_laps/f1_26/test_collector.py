@@ -262,8 +262,9 @@ class F1Laps_F1_26_CollectorTest:
             {"circuit": "china", "weather": "wet"},
         ]
         assert (
-            "Track collection error track=australia weather=dry "
-            "error=RuntimeError"
+            "event=collector_error collector=f1_laps_f1_26 "
+            "source=f1_laps game=f1_26 scope=track track=australia "
+            "weather=dry error_type=RuntimeError"
         ) in caplog.text
         assert "Track collection finished track=china status=success" in caplog.text
 

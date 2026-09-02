@@ -110,6 +110,7 @@ def run_source(
 def run() -> int:
     """Parse command-line options and run one or every collector."""
     started_at = time.perf_counter()
+    started_at_utc = datetime.now(UTC)
     parser = argparse.ArgumentParser(description="Collect Formula 1 setups")
     parser.add_argument("--game", choices=[game.value for game in GameId])
     parser.add_argument("--source", choices=[source.value for source in SourceId])
@@ -132,8 +133,9 @@ def run() -> int:
     client, collection = connect_database(DatabaseEnvironment.PRODUCTION)
     publisher = RedisSetupPublisher.from_url(REDIS_URL, REDIS_SETUP_STREAM)
     logger.info(
-        "Collection run started run_id=%s collectors=%d",
+        "event=collection_run_started run_id=%s started_at=%s collectors=%d",
         collector_run_id,
+        started_at_utc.isoformat().replace("+00:00", "Z"),
         len(collector_keys),
     )
     try:
@@ -146,19 +148,24 @@ def run() -> int:
                     collector_run_id=collector_run_id,
                     publisher=publisher,
                 ) or 0
-            except Exception:
+            except Exception as error:
                 # One unavailable website must not prevent the remaining collectors.
                 failed_collectors += 1
                 logger.exception(
-                    "Collector error collector=%s run_id=%s",
-                    collector_label(key.game, key.source),
+                    "event=collector_error collector=%s source=%s game=%s "
+                    "scope=collector run_id=%s error_type=%s",
+                    f"{key.source.value}_{key.game.value}",
+                    key.source.value,
+                    key.game.value,
                     collector_run_id,
+                    type(error).__name__,
                 )
     finally:
         if publisher is not None:
             publisher.close()
         client.close()
         duration = time.perf_counter() - started_at
+        finished_at_utc = datetime.now(UTC)
         outcome = "failed" if failed_collectors else "success"
         COLLECTION_RUNS_TOTAL.labels(outcome=outcome).inc()
         COLLECTION_RUN_DURATION.observe(duration)
@@ -167,9 +174,13 @@ def run() -> int:
             collector_run_id,
         )
         logger.info(
-            "Collection run finished run_id=%s exit=%d collectors=%d "
-            "failures=%d records=%d duration=%.2fs",
+            "event=collection_run_finished run_id=%s started_at=%s "
+            "finished_at=%s status=%s exit=%d collectors=%d failures=%d "
+            "records=%d duration_seconds=%.2f",
             collector_run_id,
+            started_at_utc.isoformat().replace("+00:00", "Z"),
+            finished_at_utc.isoformat().replace("+00:00", "Z"),
+            outcome,
             1 if failed_collectors else 0,
             len(collector_keys),
             failed_collectors,
