@@ -19,7 +19,7 @@ def test_run_source_runs_prints_and_closes_collector(
             events.append("created")
 
         def run(self):
-            events.append("run")
+            events.append(f"run:{self.collector_run_id}")
             yield {"track": "australia", "weather": "dry"}
             yield {"track": "australia", "weather": "wet"}
 
@@ -34,7 +34,10 @@ def test_run_source_runs_prints_and_closes_collector(
 
     main.run_source(GameId.F1_26, SourceId.F1_LAPS)
 
-    assert events == ["created", "run", "closed"]
+    assert events[0] == "created"
+    assert events[1].startswith("run:")
+    assert events[1] != "run:None"
+    assert events[2] == "closed"
     assert capsys.readouterr().out.splitlines() == [
         "{'track': 'australia', 'weather': 'dry'}",
         "{'track': 'australia', 'weather': 'wet'}",

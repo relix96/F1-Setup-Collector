@@ -226,6 +226,7 @@ class F1Laps_F1_26_CollectorTest:
         import collector.f1_laps.f1_26.collector as collector_module
 
         collector = self.get_collector()
+        collector.collector_run_id = "test-run"
         calls = []
         monkeypatch.setattr(collector_module, "COLLECTOR_CONCURRENCY", 1)
         monkeypatch.setattr(
@@ -263,7 +264,8 @@ class F1Laps_F1_26_CollectorTest:
         ]
         assert (
             "event=collector_error collector=f1_laps_f1_26 "
-            "source=f1_laps game=f1_26 scope=track track=australia "
+            "source=f1_laps game=f1_26 scope=track run_id=test-run "
+            "track=australia "
             "weather=dry error_type=RuntimeError"
         ) in caplog.text
         assert "Track collection finished track=china status=success" in caplog.text

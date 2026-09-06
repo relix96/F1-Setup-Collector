@@ -23,6 +23,7 @@ class BaseCollector(HttpScrapper, ABC):
             requests_per_minute=requests_per_minute,
             proxy_enabled=PROXY_ENABLED and type(self).ProxySupported,
         )
+        self.collector_run_id: str | None = None
 
     @abstractmethod
     def run(self) -> Iterator[dict[str, Any]]:

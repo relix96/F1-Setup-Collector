@@ -58,6 +58,7 @@ def run_source(
     )
     try:
         collector = CollectorFactory.create_collector(game_id, source_id)
+        collector.collector_run_id = active_run_id
         for item in collector.run():
             if collection is not None:
                 observation = {
