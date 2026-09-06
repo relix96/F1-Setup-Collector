@@ -1,3 +1,4 @@
+import json
 import sys
 
 import pytest
@@ -98,6 +99,81 @@ def test_run_source_prints_unicode_safely(monkeypatch, capsys) -> None:
     main.run_source(GameId.F1_26, SourceId.F1_LAPS)
 
     assert capsys.readouterr().out.strip() == "{'front_camber': '-3.50\\u02da'}"
+
+
+def test_run_source_logs_sanitized_json_result(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(main, "COLLECTOR_LOG_RECORDS", False)
+    monkeypatch.setattr(main, "COLLECTOR_LOG_RESULTS", True)
+
+    class FakeCollector:
+        def run(self):
+            yield {
+                "source_id": "setup-1",
+                "circuit": "Suzuka",
+                "car": "McLaren",
+                "weather": "wet",
+                "source_url": "https://example.com/private",
+                "setup": {
+                    "user": "private-user",
+                    "password": "private-password",
+                    "settings": {"front_wing": "38"},
+                },
+            }
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        main.CollectorFactory,
+        "create_collector",
+        lambda game_id, source_id: FakeCollector(),
+    )
+
+    main.run_source(
+        GameId.F1_26,
+        SourceId.F1_LAPS,
+        collector_run_id="dashboard-run",
+    )
+
+    event = json.loads(capsys.readouterr().out)
+    result = json.loads(event["result_json"])
+    assert event["event"] == "setup_collected"
+    assert event["run_id"] == "dashboard-run"
+    assert event["track"] == "Suzuka"
+    assert event["game"] == "f1_26"
+    assert event["setup_id"] == "setup-1"
+    assert result["setup"]["settings"] == {"front_wing": "38"}
+    assert "user" not in result["setup"]
+    assert "password" not in result["setup"]
+    assert "source_url" not in result
+
+
+def test_run_source_does_not_log_non_setup_records_as_results(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(main, "COLLECTOR_LOG_RECORDS", False)
+    monkeypatch.setattr(main, "COLLECTOR_LOG_RESULTS", True)
+
+    class FakeCollector:
+        def run(self):
+            yield {
+                "source": "excel_file",
+                "source_id": "tire_temperature_reference",
+            }
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        main.CollectorFactory,
+        "create_collector",
+        lambda game_id, source_id: FakeCollector(),
+    )
+
+    main.run_source(GameId.F1_26, SourceId.EXCEL_FILE)
+
+    assert capsys.readouterr().out == ""
 
 
 def test_run_source_logs_human_readable_collector_and_summary(

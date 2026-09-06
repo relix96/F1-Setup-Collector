@@ -1,5 +1,6 @@
 import argparse
 from datetime import UTC, datetime
+import json
 import os
 import time
 from typing import Any, Optional
@@ -9,7 +10,12 @@ from collector.collectorFactory import CollectorFactory
 from collector.database import DatabaseEnvironment, connect_database, insert_record
 from collector.enums import GameId, SourceId
 from collector.queue import RedisSetupPublisher
-from collector.settings import COLLECTOR_LOG_RECORDS, REDIS_SETUP_STREAM, REDIS_URL
+from collector.settings import (
+    COLLECTOR_LOG_RECORDS,
+    COLLECTOR_LOG_RESULTS,
+    REDIS_SETUP_STREAM,
+    REDIS_URL,
+)
 from collector.utils.logger import get_logger
 from collector.utils.metrics import (
     COLLECTION_RUN_DURATION,
@@ -23,6 +29,24 @@ from collector.utils.metrics import (
 
 logger = get_logger(__name__)
 
+_SENSITIVE_RESULT_KEYS = frozenset(
+    {
+        "api_key",
+        "apikey",
+        "authorization",
+        "cookie",
+        "password",
+        "proxy",
+        "proxy_url",
+        "set-cookie",
+        "source_url",
+        "token",
+        "url",
+        "user",
+        "username",
+    }
+)
+
 GAME_LABELS = {GameId.F1_26: "F1 26"}
 SOURCE_LABELS = {
     SourceId.F1_LAPS: "F1Laps",
@@ -35,6 +59,54 @@ def collector_label(game_id: GameId, source_id: SourceId) -> str:
     return (
         f"{SOURCE_LABELS.get(source_id, source_id.value)}"
         f" -> {GAME_LABELS.get(game_id, game_id.value)}"
+    )
+
+
+def _sanitize_result_for_logs(value: Any) -> Any:
+    """Remove personal data and secrets before sending a result to Loki."""
+
+    if isinstance(value, dict):
+        return {
+            str(key): _sanitize_result_for_logs(item)
+            for key, item in value.items()
+            if str(key).casefold() not in _SENSITIVE_RESULT_KEYS
+            and not str(key).casefold().endswith("_url")
+        }
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_result_for_logs(item) for item in value]
+    return value
+
+
+def _log_collected_result(
+    item: dict[str, Any],
+    *,
+    game_id: GameId,
+    source_id: SourceId,
+    run_id: str,
+) -> None:
+    sanitized = _sanitize_result_for_logs(item)
+    event = {
+        "event": "setup_collected",
+        "collected_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "run_id": run_id,
+        "collector": collector_label(game_id, source_id),
+        "source": source_id.value,
+        "game": game_id.value,
+        "track": sanitized.get("circuit") or sanitized.get("track"),
+        "weather": sanitized.get("weather"),
+        "car": sanitized.get("car"),
+        "setup_id": sanitized.get("source_id") or sanitized.get("id"),
+        "result_json": json.dumps(
+            sanitized,
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+            default=str,
+        ),
+    }
+    print(
+        json.dumps(event, ensure_ascii=True, separators=(",", ":")),
+        flush=True,
     )
 
 
@@ -81,6 +153,13 @@ def run_source(
                             type(error).__name__,
                         )
             collected_count += 1
+            if COLLECTOR_LOG_RESULTS and isinstance(item.get("setup"), dict):
+                _log_collected_result(
+                    item,
+                    game_id=game_id,
+                    source_id=source_id,
+                    run_id=active_run_id,
+                )
             # Keep console output from aborting collection on Windows consoles
             # whose legacy encoding cannot represent values such as ``-3.50˚``.
             if COLLECTOR_LOG_RECORDS:

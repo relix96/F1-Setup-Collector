@@ -47,6 +47,13 @@ os valores são iguais aos de uma execução anterior.
 Em produção, o agendador pode definir `COLLECTOR_RUN_ID`. Se não o fizer, o
 collector continua a gerar automaticamente um UUID novo.
 
+`COLLECTOR_LOG_RESULTS=true` emite um evento JSON por resultado para o dashboard
+Grafana. O evento contém pista, jogo, condição, carro, identificadores e uma
+cópia organizada do resultado, mas remove recursivamente usernames, URLs,
+cookies, tokens, passwords, API keys e dados de proxy. O raw completo permanece
+apenas no MongoDB. `COLLECTOR_LOG_RECORDS` deve continuar desativado em produção,
+pois é a opção antiga que imprime o objeto original sem esta sanitização.
+
 ## Docker
 
 ```bash
