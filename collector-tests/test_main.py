@@ -113,9 +113,11 @@ def test_run_source_logs_sanitized_json_result(monkeypatch, capsys) -> None:
                 "car": "McLaren",
                 "weather": "wet",
                 "source_url": "https://example.com/private",
+                "future_sensitive_field": "must-not-reach-loki",
                 "setup": {
                     "user": "private-user",
                     "password": "private-password",
+                    "notes": "private free-form text",
                     "settings": {"front_wing": "38"},
                 },
             }
@@ -145,7 +147,9 @@ def test_run_source_logs_sanitized_json_result(monkeypatch, capsys) -> None:
     assert result["setup"]["settings"] == {"front_wing": "38"}
     assert "user" not in result["setup"]
     assert "password" not in result["setup"]
+    assert "notes" not in result["setup"]
     assert "source_url" not in result
+    assert "future_sensitive_field" not in result
 
 
 def test_run_source_does_not_log_non_setup_records_as_results(

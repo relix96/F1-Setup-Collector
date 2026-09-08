@@ -29,21 +29,61 @@ from collector.utils.metrics import (
 
 logger = get_logger(__name__)
 
-_SENSITIVE_RESULT_KEYS = frozenset(
+_SAFE_RESULT_KEYS = (
+    "source",
+    "source_id",
+    "game",
+    "circuit",
+    "car",
+    "platform",
+    "weather",
+    "collector_date",
+)
+_SAFE_SETUP_KEYS = (
+    "team",
+    "session",
+    "lap_time",
+    "conditions",
+    "steering",
+    "date",
+    "traction_control",
+    "anti_lock_brakes",
+    "steering_assist",
+    "braking_assist",
+    "gearbox",
+    "racing_line",
+)
+_SAFE_SETTING_SECTIONS = (
+    "aerodynamics",
+    "transmission",
+    "suspension_geometry",
+    "suspension",
+    "brakes",
+    "tyres",
+)
+_SAFE_SETTING_KEYS = frozenset(
     {
-        "api_key",
-        "apikey",
-        "authorization",
-        "cookie",
-        "password",
-        "proxy",
-        "proxy_url",
-        "set-cookie",
-        "source_url",
-        "token",
-        "url",
-        "user",
-        "username",
+        "front_wing",
+        "rear_wing",
+        "differential_on_throttle",
+        "differential_off_throttle",
+        "engine_braking",
+        "front_camber",
+        "rear_camber",
+        "front_toe",
+        "rear_toe",
+        "front_suspension",
+        "rear_suspension",
+        "front_anti_roll_bar",
+        "rear_anti_roll_bar",
+        "front_ride_height",
+        "rear_ride_height",
+        "brake_pressure",
+        "front_brake_bias",
+        "front_right_tyre_pressure",
+        "front_left_tyre_pressure",
+        "rear_right_tyre_pressure",
+        "rear_left_tyre_pressure",
     }
 )
 
@@ -62,19 +102,55 @@ def collector_label(game_id: GameId, source_id: SourceId) -> str:
     )
 
 
-def _sanitize_result_for_logs(value: Any) -> Any:
-    """Remove personal data and secrets before sending a result to Loki."""
+def _safe_scalar(value: Any) -> str | int | float | bool | None:
+    """Keep bounded scalar values; never serialize arbitrary nested input."""
 
-    if isinstance(value, dict):
-        return {
-            str(key): _sanitize_result_for_logs(item)
-            for key, item in value.items()
-            if str(key).casefold() not in _SENSITIVE_RESULT_KEYS
-            and not str(key).casefold().endswith("_url")
+    if value is None or isinstance(value, (int, float, bool)):
+        return value
+    return str(value)[:200]
+
+
+def _safe_settings(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, Any] = {}
+    for section in _SAFE_SETTING_SECTIONS:
+        section_value = value.get(section)
+        if isinstance(section_value, dict):
+            result[section] = {
+                key: _safe_scalar(item)
+                for key, item in section_value.items()
+                if key in _SAFE_SETTING_KEYS
+            }
+    # Accept the collector's pre-mapping flat representation as well.
+    for key, item in value.items():
+        if key in _SAFE_SETTING_KEYS:
+            result[key] = _safe_scalar(item)
+    return result
+
+
+def _sanitize_result_for_logs(value: Any) -> dict[str, Any]:
+    """Build a strict allowlist before sending a collector result to Loki."""
+
+    if not isinstance(value, dict):
+        return {}
+    result = {
+        key: _safe_scalar(value[key])
+        for key in _SAFE_RESULT_KEYS
+        if key in value
+    }
+    setup = value.get("setup")
+    if isinstance(setup, dict):
+        safe_setup = {
+            key: _safe_scalar(setup[key])
+            for key in _SAFE_SETUP_KEYS
+            if key in setup
         }
-    if isinstance(value, (list, tuple)):
-        return [_sanitize_result_for_logs(item) for item in value]
-    return value
+        settings_value = _safe_settings(setup.get("settings"))
+        if settings_value:
+            safe_setup["settings"] = settings_value
+        result["setup"] = safe_setup
+    return result
 
 
 def _log_collected_result(
