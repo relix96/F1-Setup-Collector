@@ -79,6 +79,24 @@ F1Laps está explicitamente autorizada no código a usar o pool; fontes futuras
 têm de declarar essa autorização. O ficheiro local `proxies` nunca é incluído
 no Git nem na imagem Docker.
 
+## GitHub Actions e deployment automático
+
+Um push para `main` executa primeiro os testes isolados e o build Docker. Só
+depois publica `ghcr.io/relix96/f1-setup-collector:production`. O deployment
+automático da Stack partilhada com a API fica desativado até serem configurados:
+
+- o runner self-hosted do Poseidon com as labels `linux`, `x64` e `poseidon`;
+- o secret `PORTAINER_API_WEBHOOK_URL`;
+- a variável de repositório `AUTO_DEPLOY_ENABLED=true`;
+- o environment `production`.
+
+O runner deve usar uma conta dedicada sem `sudo` e sem acesso ao Docker socket.
+O webhook do Portainer deve continuar acessível apenas dentro da rede local.
+Os testes marcados como `live` ou `selenium` não são executados no pipeline de
+produção, evitando acessos e escritas acidentais em serviços externos.
+O health check usa a API local em `http://127.0.0.1:8000/api/v1/health/live`;
+a variável opcional `API_HEALTHCHECK_URL` permite alterar esse endereço.
+
 Cada linha usa `host:port`, `host:port:user:password` ou uma URL HTTP(S). Ative
 com `PROXY_ENABLED=true` e configure `PROXY_FILE`. `COLLECTOR_CONCURRENCY`
 limita as pistas concorrentes, enquanto `MAX_REQUESTS_PER_MINUTE` continua a
