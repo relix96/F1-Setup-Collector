@@ -96,6 +96,9 @@ Os testes marcados como `live` ou `selenium` não são executados no pipeline de
 produção, evitando acessos e escritas acidentais em serviços externos.
 O health check usa a API local em `http://127.0.0.1:8000/api/v1/health/live`;
 a variável opcional `API_HEALTHCHECK_URL` permite alterar esse endereço.
+O URL guardado como secret pode continuar a ser o HTTPS gerado pelo Portainer:
+o workflow usa apenas o caminho secreto e chama-o através de
+`PORTAINER_BASE_URL`, por predefinição `http://127.0.0.1:9000`.
 
 Cada linha usa `host:port`, `host:port:user:password` ou uma URL HTTP(S). Ative
 com `PROXY_ENABLED=true` e configure `PROXY_FILE`. `COLLECTOR_CONCURRENCY`

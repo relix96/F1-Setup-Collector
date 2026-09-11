@@ -76,9 +76,13 @@ jobs:
       - name: Trigger Portainer application stack webhook
         env:
           PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_API_WEBHOOK_URL }}
+          PORTAINER_BASE_URL: ${{ vars.PORTAINER_BASE_URL || 'http://127.0.0.1:9000' }}
         run: |
           test -n "$PORTAINER_WEBHOOK_URL"
-          curl --fail --show-error --silent --request POST "$PORTAINER_WEBHOOK_URL"
+          webhook_without_scheme="${PORTAINER_WEBHOOK_URL#*://}"
+          webhook_path="/${webhook_without_scheme#*/}"
+          curl --fail --show-error --silent --request POST \
+            "${PORTAINER_BASE_URL%/}${webhook_path}"
       - name: Verify application health
         env:
           HEALTHCHECK_URL: ${{ vars.API_HEALTHCHECK_URL || 'http://127.0.0.1:8000/api/v1/health/live' }}
