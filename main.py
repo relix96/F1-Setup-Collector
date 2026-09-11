@@ -67,7 +67,6 @@ _SAFE_SETTING_KEYS = frozenset(
         "rear_wing",
         "differential_on_throttle",
         "differential_off_throttle",
-        "engine_braking",
         "front_camber",
         "rear_camber",
         "front_toe",

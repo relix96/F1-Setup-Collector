@@ -18,7 +18,6 @@ SETTING_LABELS = {
     "Rear Wing": "rear_wing",
     "Differential Adjustment On Throttle": "differential_on_throttle",
     "Differential Adjustment Off Throttle": "differential_off_throttle",
-    "Engine Braking": "engine_braking",
     "Front Camber": "front_camber",
     "Rear Camber": "rear_camber",
     "Front Toe": "front_toe",

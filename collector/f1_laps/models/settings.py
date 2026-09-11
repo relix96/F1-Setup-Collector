@@ -12,7 +12,6 @@ class Aerodynamics:
 class Transmission:
     differential_on_throttle: Optional[str] = None
     differential_off_throttle: Optional[str] = None
-    engine_braking: Optional[str] = None
 
 
 @dataclass
