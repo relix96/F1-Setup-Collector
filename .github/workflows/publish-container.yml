@@ -2,7 +2,9 @@ name: Verify, publish and deploy collector
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
+  pull_request:
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -36,7 +38,7 @@ jobs:
     needs: verify
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      github.ref == 'refs/heads/main'
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -59,7 +61,7 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/relix96/f1-setup-collector:production
+            ghcr.io/relix96/f1-setup-collector:${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
             ghcr.io/relix96/f1-setup-collector:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/relix96/F1-Setup-Collector
@@ -69,7 +71,9 @@ jobs:
 
   deploy:
     needs: publish
-    if: vars.AUTO_DEPLOY_ENABLED == 'true'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      vars.AUTO_DEPLOY_ENABLED == 'true'
     runs-on: [self-hosted, linux, x64, poseidon]
     environment: production
     steps:
@@ -95,4 +99,36 @@ jobs:
             sleep 5
           done
           echo "Application did not become healthy after deployment" >&2
+          exit 1
+
+  deploy-staging:
+    needs: publish
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      vars.AUTO_DEPLOY_STAGING_ENABLED == 'true'
+    runs-on: [self-hosted, linux, x64, poseidon]
+    environment: staging
+    steps:
+      - name: Trigger Portainer staging application stack webhook
+        env:
+          PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_API_STAGING_WEBHOOK_URL }}
+          PORTAINER_BASE_URL: ${{ vars.PORTAINER_BASE_URL || 'http://127.0.0.1:9000' }}
+        run: |
+          test -n "$PORTAINER_WEBHOOK_URL"
+          webhook_without_scheme="${PORTAINER_WEBHOOK_URL#*://}"
+          webhook_path="/${webhook_without_scheme#*/}"
+          curl --fail --show-error --silent --request POST \
+            "${PORTAINER_BASE_URL%/}${webhook_path}"
+      - name: Verify staging application health
+        env:
+          HEALTHCHECK_URL: ${{ vars.API_STAGING_HEALTHCHECK_URL || 'http://127.0.0.1:8001/api/v1/health/live' }}
+        run: |
+          sleep 10
+          for attempt in {1..36}; do
+            if curl --fail --show-error --silent "$HEALTHCHECK_URL" >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Staging application did not become healthy after deployment" >&2
           exit 1
