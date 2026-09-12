@@ -1,9 +1,11 @@
 import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from queue import Queue
 import time
 from typing import Any, ClassVar, DefaultDict, Dict, Iterator, List
+import unicodedata
 from urllib.parse import unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -19,6 +21,10 @@ from collector.utils.logger import get_logger
 TRACK_PATH = re.compile(r"/f1-\d+/setups/([a-z0-9_-]+)/?$", re.IGNORECASE)
 SETUP_PATH = re.compile(
     r"/f1-\d+/setups/([^/]+)/([0-9a-f]{8}-[0-9a-f-]{27,})/?$", re.IGNORECASE
+)
+LEADERBOARD_LAP_PATH = re.compile(
+    r"/f1-\d+/leaderboard/([^/]+)/([0-9a-f]{8}-[0-9a-f-]{27,})/?$",
+    re.IGNORECASE,
 )
 logger = get_logger(__name__)
 
@@ -41,11 +47,16 @@ class F1LapsF126Collector(F1LapsCollector):
     """Collect every F1Laps setup, ordered by track and dry/wet condition."""
     GameId = GameId.F1_26
     game_url: ClassVar[str] = F1LapsCollector.base_url + "f1-26/setups/"
+    leaderboard_url: ClassVar[str] = (
+        F1LapsCollector.base_url + "f1-26/leaderboard/"
+    )
+    telemetry_game_id: ClassVar[str] = "f12026"
 
     def __init__(self) -> None:
         super().__init__()
         self.mapper = F1SetupLapsMapper()
         self._tracks: Dict[str, Dict[str, str]] = {}
+        self._leaderboards: Dict[str, List[Dict[str, Any]]] = {}
 
     @staticmethod
     def _strings(html: str) -> List[str]:
@@ -91,6 +102,206 @@ class F1LapsF126Collector(F1LapsCollector):
             if SETUP_PATH.search(urlparse(url).path) and url not in seen:
                 seen.add(url)
                 yield url
+
+    @staticmethod
+    def _normalized(value: Any) -> str:
+        if value is None:
+            return ""
+        normalized = unicodedata.normalize("NFKC", str(value))
+        return " ".join(normalized.split()).casefold()
+
+    @staticmethod
+    def _lap_time_ms(value: Any) -> int | None:
+        match = re.fullmatch(
+            r"(?:(\d+):)?(\d{1,2})\.(\d{3})",
+            str(value or "").strip(),
+        )
+        if not match:
+            return None
+        minutes = int(match.group(1) or 0)
+        return (minutes * 60 + int(match.group(2))) * 1000 + int(match.group(3))
+
+    @staticmethod
+    def _date_key(value: Any) -> str:
+        text = " ".join(str(value or "").replace(".", "").split())
+        for date_format in ("%B %d, %Y", "%b %d, %Y"):
+            try:
+                return datetime.strptime(text, date_format).date().isoformat()
+            except ValueError:
+                continue
+        return text.casefold()
+
+    def _parse_leaderboard(
+        self,
+        html: str,
+        base_url: str,
+    ) -> Iterator[Dict[str, Any]]:
+        soup = BeautifulSoup(html, "html.parser")
+        seen: set[str] = set()
+        for row in soup.select("tbody tr"):
+            cells = row.find_all("td", recursive=False)
+            if len(cells) < 7:
+                continue
+            anchor = cells[2].find("a", href=True)
+            if anchor is None:
+                continue
+            url = urljoin(base_url, anchor["href"])
+            match = LEADERBOARD_LAP_PATH.search(urlparse(url).path)
+            if match is None or url in seen:
+                continue
+            flags = " ".join(cells[6].stripped_strings)
+            if "has telemetry data" not in flags.casefold():
+                continue
+            seen.add(url)
+            conditions_match = re.search(
+                r"\b(dry|wet)\s+conditions\b",
+                flags,
+                re.IGNORECASE,
+            )
+            yield {
+                "id": match.group(2),
+                "url": url,
+                "date": " ".join(cells[1].stripped_strings),
+                "lap_time": " ".join(cells[2].stripped_strings),
+                "user": " ".join(cells[3].stripped_strings),
+                "team": " ".join(cells[4].stripped_strings),
+                "session": " ".join(cells[5].stripped_strings),
+                "conditions": (
+                    conditions_match.group(1).title()
+                    if conditions_match is not None
+                    else None
+                ),
+            }
+
+    def _get_leaderboard(self, track_name: str) -> List[Dict[str, Any]]:
+        if track_name in self._leaderboards:
+            return self._leaderboards[track_name]
+
+        url = urljoin(self.leaderboard_url, f"{track_name}/")
+        try:
+            response = self.request_api(url, method="GET", json_response=False)
+            entries = (
+                list(self._parse_leaderboard(response.text, url))
+                if response is not None
+                else []
+            )
+        except Exception as error:
+            logger.warning(
+                "Leaderboard unavailable track=%s error_type=%s",
+                track_name,
+                type(error).__name__,
+            )
+            entries = []
+        self._leaderboards[track_name] = entries
+        return entries
+
+    def _matching_lap(
+        self,
+        setup: Dict[str, Any],
+        candidates: List[Dict[str, Any]],
+    ) -> Dict[str, Any] | None:
+        details = setup.get("setup") or {}
+        lap_time_ms = self._lap_time_ms(details.get("lap_time"))
+        if not self._normalized(details.get("user")) or lap_time_ms is None:
+            return None
+
+        expected = {
+            "user": self._normalized(details.get("user")),
+            "team": self._normalized(details.get("team")),
+            "session": self._normalized(details.get("session")),
+            "conditions": self._normalized(
+                details.get("conditions") or setup.get("weather")
+            ),
+            "date": self._date_key(details.get("date")),
+        }
+        matches = []
+        for candidate in candidates:
+            if self._lap_time_ms(candidate.get("lap_time")) != lap_time_ms:
+                continue
+            actual = {
+                "user": self._normalized(candidate.get("user")),
+                "team": self._normalized(candidate.get("team")),
+                "session": self._normalized(candidate.get("session")),
+                "conditions": self._normalized(candidate.get("conditions")),
+                "date": self._date_key(candidate.get("date")),
+            }
+            # Every context field emitted by both F1Laps pages must agree.
+            if all(
+                expected[field] and expected[field] == actual[field]
+                for field in expected
+            ):
+                matches.append(candidate)
+        return matches[0] if len(matches) == 1 else None
+
+    def _parse_lap_details(self, html: str) -> Dict[str, Any]:
+        strings = self._strings(html)
+        labels = {
+            "Time": "lap_time",
+            "Sector 1": "sector_1",
+            "Sector 2": "sector_2",
+            "Sector 3": "sector_3",
+            **DETAIL_LABELS,
+        }
+        details = self._pairs(strings, labels)
+        try:
+            heading = next(text for text in strings if text.startswith("Lap by "))
+            details["user"] = heading.removeprefix("Lap by ").strip()
+        except StopIteration:
+            pass
+        return details
+
+    def _attach_telemetry(
+        self,
+        setup: Dict[str, Any],
+        candidate: Dict[str, Any],
+    ) -> None:
+        lap_url = candidate["url"]
+        try:
+            detail_response = self.request_api(
+                lap_url,
+                method="GET",
+                json_response=False,
+            )
+            if detail_response is None:
+                return
+            lap_details = self._parse_lap_details(detail_response.text)
+            if self._matching_lap(
+                setup,
+                [{**candidate, **lap_details}],
+            ) is None:
+                return
+
+            telemetry_url = urljoin(
+                self.base_url,
+                f"laptimes/{self.telemetry_game_id}/{candidate['id']}/telemetry_charts/",
+            )
+            payload = self.request_api(telemetry_url, method="GET")
+            original = (
+                payload.get("original") if isinstance(payload, dict) else None
+            )
+            if not isinstance(original, dict) or not original:
+                return
+            setup["setup"]["telemetry"] = {
+                "match": {
+                    "method": "exact_user_lap_time_and_context",
+                    "leaderboard_lap_id": candidate["id"],
+                    "leaderboard_url": lap_url,
+                },
+                "lap": {
+                    key: lap_details.get(key)
+                    for key in ("lap_time", "sector_1", "sector_2", "sector_3")
+                },
+                "data": original,
+                "is_2026_regulations": bool(
+                    payload.get("is_2026_regulations", False)
+                ),
+            }
+        except Exception as error:
+            logger.warning(
+                "Telemetry unavailable leaderboard_lap_id=%s error_type=%s",
+                candidate.get("id", "unknown"),
+                type(error).__name__,
+            )
 
     def _parse_setup(self, html: str, url: str, track: Dict[str, str], weather: str) -> Dict[str, Any]:
         strings = self._strings(html)
@@ -164,11 +375,15 @@ class F1LapsF126Collector(F1LapsCollector):
         if listing is None:
             return
 
+        leaderboard = self._get_leaderboard(track_name)
         for setup_url in self._parse_listing(listing.text, listing_url):
             detail = self.request_api(setup_url, method="GET", json_response=False)
             if detail is None:
                 continue
             raw = self._parse_setup(detail.text, setup_url, track, weather)
+            matching_lap = self._matching_lap(raw, leaderboard)
+            if matching_lap is not None:
+                self._attach_telemetry(raw, matching_lap)
             yield self.mapper.map(raw).to_dict()
 
     def get_setups_by_track(self, track_name: str) -> List[Dict[str, Any]]:

@@ -46,6 +46,21 @@ class F1Laps_F1_26_CollectorTest:
         assert setup["setup"]["date"] == "Aug. 30, 2026"
         assert "lap_date" not in setup
 
+    def test_mapper_preserves_matched_telemetry(self) -> None:
+        telemetry = {
+            "match": {"leaderboard_lap_id": "lap-1"},
+            "data": {"speed": [{"x": 0, "y": 300}]},
+        }
+
+        mapped = F1SetupLapsMapper().map(
+            {
+                "id": "setup-1",
+                "setup": {"telemetry": telemetry, "settings": {}},
+            }
+        ).to_dict()
+
+        assert mapped["setup"]["telemetry"] == telemetry
+
     def test_mapper_groups_settings_like_the_site(self) -> None:
         setup = F1SetupLapsMapper().map(
             {
@@ -150,6 +165,175 @@ class F1Laps_F1_26_CollectorTest:
                 {"method": "GET", "json_response": False},
             )
         ]
+
+    def test_parse_leaderboard_keeps_only_laps_with_telemetry(self) -> None:
+        collector = self.get_collector()
+        html = """
+        <table><tbody>
+          <tr>
+            <td>1</td><td>Jul 12, 2026</td>
+            <td><a href="/f1-26/leaderboard/australia/9c5300bc-d410-4578-9e2c-4fbabef21081/">1:17.104</a></td>
+            <td>michalmamelka6</td><td>Red Bull Racing</td>
+            <td>Time Trial</td><td>Dry conditions Has telemetry data</td>
+          </tr>
+          <tr>
+            <td>2</td><td>Jul 13, 2026</td>
+            <td><a href="/f1-26/leaderboard/australia/11111111-1111-1111-1111-111111111111/">1:18.000</a></td>
+            <td>another-driver</td><td>Ferrari</td>
+            <td>Time Trial</td><td>Dry conditions</td>
+          </tr>
+        </tbody></table>
+        """
+
+        entries = list(
+            collector._parse_leaderboard(
+                html,
+                "https://www.f1laps.com/f1-26/leaderboard/australia/",
+            )
+        )
+
+        assert entries == [
+            {
+                "id": "9c5300bc-d410-4578-9e2c-4fbabef21081",
+                "url": "https://www.f1laps.com/f1-26/leaderboard/australia/9c5300bc-d410-4578-9e2c-4fbabef21081/",
+                "date": "Jul 12, 2026",
+                "lap_time": "1:17.104",
+                "user": "michalmamelka6",
+                "team": "Red Bull Racing",
+                "session": "Time Trial",
+                "conditions": "Dry",
+            }
+        ]
+
+    def test_matches_only_one_exact_leaderboard_lap(self) -> None:
+        collector = self.get_collector()
+        setup = {
+            "weather": "dry",
+            "setup": {
+                "user": " MichalMamelka6 ",
+                "team": "Red Bull Racing",
+                "session": "Time Trial",
+                "lap_time": "1:17.104",
+                "conditions": "Dry",
+                "date": "July 12, 2026",
+            },
+        }
+        correct = {
+            "id": "lap-1",
+            "user": "michalmamelka6",
+            "team": "Red Bull Racing",
+            "session": "Time Trial",
+            "lap_time": "1:17.104",
+            "conditions": "Dry",
+            "date": "Jul 12, 2026",
+        }
+        wrong_time = {**correct, "id": "lap-2", "lap_time": "1:17.105"}
+
+        assert collector._matching_lap(setup, [wrong_time, correct]) == correct
+
+    def test_does_not_match_ambiguous_or_different_context(self) -> None:
+        collector = self.get_collector()
+        setup = {
+            "weather": "dry",
+            "setup": {
+                "user": "driver",
+                "team": "Ferrari",
+                "session": "Time Trial",
+                "lap_time": "1:20.000",
+                "conditions": "Dry",
+                "date": "July 12, 2026",
+            },
+        }
+        candidate = {
+            "id": "lap-1",
+            "user": "driver",
+            "team": "Ferrari",
+            "session": "Time Trial",
+            "lap_time": "1:20.000",
+            "conditions": "Dry",
+            "date": "Jul 12, 2026",
+        }
+
+        assert collector._matching_lap(setup, [candidate, dict(candidate)]) is None
+        assert collector._matching_lap(
+            setup,
+            [{**candidate, "conditions": "Wet"}],
+        ) is None
+
+    def test_attach_telemetry_revalidates_detail_before_storing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        collector = self.get_collector()
+        setup = {
+            "weather": "dry",
+            "setup": {
+                "user": "driver",
+                "team": "Ferrari",
+                "session": "Time Trial",
+                "lap_time": "1:20.000",
+                "conditions": "Dry",
+                "date": "July 12, 2026",
+            },
+        }
+        candidate = {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "url": "https://www.f1laps.com/f1-26/leaderboard/australia/11111111-1111-1111-1111-111111111111/",
+            "user": "driver",
+            "team": "Ferrari",
+            "session": "Time Trial",
+            "lap_time": "1:20.000",
+            "conditions": "Dry",
+            "date": "Jul 12, 2026",
+        }
+        lap_html = """
+        <h2>Lap by driver</h2>
+        <dl>
+          <dt>Time</dt><dd>1:20.000</dd>
+          <dt>Sector 1</dt><dd>25.000</dd>
+          <dt>Sector 2</dt><dd>20.000</dd>
+          <dt>Sector 3</dt><dd>35.000</dd>
+          <dt>Team</dt><dd>Ferrari</dd>
+          <dt>Session</dt><dd>Time Trial</dd>
+          <dt>Conditions</dt><dd>Dry</dd>
+        </dl>
+        """
+        calls = []
+
+        def fake_request(url: str, **kwargs):
+            calls.append((url, kwargs))
+            if url == candidate["url"]:
+                return FakeResponse(lap_html)
+            return {
+                "original": {
+                    "speed": [{"x": 0, "y": 300}],
+                    "brake": [{"x": 0, "y": 0}],
+                },
+                "comparison": {},
+                "is_2026_regulations": True,
+            }
+
+        monkeypatch.setattr(collector, "request_api", fake_request)
+
+        collector._attach_telemetry(setup, candidate)
+
+        telemetry = setup["setup"]["telemetry"]
+        assert telemetry["match"] == {
+            "method": "exact_user_lap_time_and_context",
+            "leaderboard_lap_id": candidate["id"],
+            "leaderboard_url": candidate["url"],
+        }
+        assert telemetry["lap"] == {
+            "lap_time": "1:20.000",
+            "sector_1": "25.000",
+            "sector_2": "20.000",
+            "sector_3": "35.000",
+        }
+        assert telemetry["data"]["speed"] == [{"x": 0, "y": 300}]
+        assert telemetry["is_2026_regulations"] is True
+        assert calls[1][0].endswith(
+            "/laptimes/f12026/11111111-1111-1111-1111-111111111111/telemetry_charts/"
+        )
 
     def test_f1_laps_collector_run_processes_every_track_and_weather(
         self,
