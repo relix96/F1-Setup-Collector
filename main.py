@@ -89,6 +89,7 @@ _SAFE_SETTING_KEYS = frozenset(
 GAME_LABELS = {GameId.F1_26: "F1 26"}
 SOURCE_LABELS = {
     SourceId.F1_LAPS: "F1Laps",
+    SourceId.SIM_RACING_SETUP: "Sim Racing Setup",
     SourceId.EA_SETUP: "EA Setup",
     SourceId.EXCEL_FILE: "Excel",
 }

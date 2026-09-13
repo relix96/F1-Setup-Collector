@@ -14,6 +14,16 @@ poetry run python main.py
 Sem `--source`, o `main.py` executa todos os coletores registados. Para executar
 apenas um: `poetry run python main.py --source f1_laps`.
 
+O Sim Racing Setup para F1 26 pode ser executado isoladamente com:
+
+```powershell
+poetry run python main.py --game f1_26 --source sim_racing_setup
+```
+
+Este coletor importa os setups da comunidade e os setups Pro cujos valores
+estejam publicamente disponíveis. Conteúdo Pro bloqueado não é contornado nem
+importado.
+
 Para recolher os setups da Google Sheet configurada (separador `gid=2082870794`):
 
 ```powershell
