@@ -1,3 +1,5 @@
+import json
+import math
 import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +28,9 @@ LEADERBOARD_LAP_PATH = re.compile(
     r"/f1-\d+/leaderboard/([^/]+)/([0-9a-f]{8}-[0-9a-f-]{27,})/?$",
     re.IGNORECASE,
 )
+SVG_VIEW_BOX = re.compile(r"^-?\d+(?:\.\d+)?(?:\s+-?\d+(?:\.\d+)?){3}$")
+SVG_PATH_DATA = re.compile(r"^[MmLlHhVvCcSsQqTtAaZz0-9eE+.,\s-]+$")
+SVG_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 logger = get_logger(__name__)
 
 
@@ -250,6 +255,66 @@ class F1LapsF126Collector(F1LapsCollector):
             pass
         return details
 
+    @staticmethod
+    def _parse_track_map(html: str) -> Dict[str, Any] | None:
+        """Extract the circuit SVG and distance coordinates as inert JSON data."""
+        soup = BeautifulSoup(html, "html.parser")
+        svg = soup.find("svg", id="minimap-svg")
+        lap_data = soup.find("script", id="lap-data")
+        if svg is None or lap_data is None:
+            return None
+
+        view_box = " ".join(
+            str(svg.get("viewBox") or svg.get("viewbox") or "").split()
+        )
+        if not SVG_VIEW_BOX.fullmatch(view_box):
+            return None
+
+        paths = []
+        path_size = 0
+        for path in svg.find_all("path"):
+            data = " ".join(str(path.get("d", "")).split())
+            color = str(path.get("stroke", ""))
+            if not data or len(data) > 50_000 or not SVG_PATH_DATA.fullmatch(data):
+                continue
+            if color and not SVG_COLOR.fullmatch(color):
+                color = ""
+            try:
+                width = min(max(float(path.get("stroke-width", 2)), 1), 12)
+            except (TypeError, ValueError):
+                width = 2
+            path_size += len(data)
+            if path_size > 150_000:
+                break
+            paths.append({"d": data, "color": color or "#64748b", "width": width})
+
+        try:
+            raw_coordinates = json.loads(lap_data.string or lap_data.get_text())
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if not isinstance(raw_coordinates, dict):
+            return None
+
+        coordinates = []
+        for raw_distance, point in raw_coordinates.items():
+            try:
+                distance = float(raw_distance)
+                x, y = float(point[0]), float(point[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if all(math.isfinite(value) for value in (distance, x, y)):
+                coordinates.append({"distance": distance, "x": x, "y": y})
+        coordinates.sort(key=lambda point: point["distance"])
+        coordinates = coordinates[:2_000]
+
+        if not paths or not coordinates:
+            return None
+        return {
+            "view_box": view_box,
+            "paths": paths,
+            "coordinates": coordinates,
+        }
+
     def _attach_telemetry(
         self,
         setup: Dict[str, Any],
@@ -292,6 +357,7 @@ class F1LapsF126Collector(F1LapsCollector):
                     for key in ("lap_time", "sector_1", "sector_2", "sector_3")
                 },
                 "data": original,
+                "track_map": self._parse_track_map(detail_response.text),
                 "is_2026_regulations": bool(
                     payload.get("is_2026_regulations", False)
                 ),

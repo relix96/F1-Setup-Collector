@@ -297,6 +297,12 @@ class F1Laps_F1_26_CollectorTest:
           <dt>Session</dt><dd>Time Trial</dd>
           <dt>Conditions</dt><dd>Dry</dd>
         </dl>
+        <svg id="minimap-svg" viewBox="0 0 200 100">
+          <path d="M 0 50 L 200 50" stroke="#EF4444" stroke-width="2" />
+        </svg>
+        <script id="lap-data" type="application/json">
+          {"0": [0, 50], "100": [200, 50]}
+        </script>
         """
         calls = []
 
@@ -330,6 +336,16 @@ class F1Laps_F1_26_CollectorTest:
             "sector_3": "35.000",
         }
         assert telemetry["data"]["speed"] == [{"x": 0, "y": 300}]
+        assert telemetry["track_map"] == {
+            "view_box": "0 0 200 100",
+            "paths": [
+                {"d": "M 0 50 L 200 50", "color": "#EF4444", "width": 2.0}
+            ],
+            "coordinates": [
+                {"distance": 0.0, "x": 0.0, "y": 50.0},
+                {"distance": 100.0, "x": 200.0, "y": 50.0},
+            ],
+        }
         assert telemetry["is_2026_regulations"] is True
         assert calls[1][0].endswith(
             "/laptimes/f12026/11111111-1111-1111-1111-111111111111/telemetry_charts/"
