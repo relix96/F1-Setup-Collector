@@ -4,12 +4,19 @@ from collector.base_collector import BaseCollector
 from collector.enums import GameId, SourceId
 from collector.excel_file.f1_26.collector import ExcelFileF126Collector
 from collector.f1_laps.f1_26.collector import F1LapsF126Collector
+from collector.sim_racing_setup.f1_26.collector import (
+    SimRacingSetupF126Collector,
+)
 from collector.models.collectorData import CollectorKey
 
 
 class CollectorFactory:
     _factory: ClassVar[dict[CollectorKey, type[BaseCollector]]] = {
         CollectorKey(game=GameId.F1_26, source=SourceId.F1_LAPS): F1LapsF126Collector,
+        CollectorKey(
+            game=GameId.F1_26,
+            source=SourceId.SIM_RACING_SETUP,
+        ): SimRacingSetupF126Collector,
         CollectorKey(game=GameId.F1_26, source=SourceId.EXCEL_FILE): ExcelFileF126Collector,
         # EA setup is disabled until authenticated access is supported.
     }
