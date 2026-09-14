@@ -73,7 +73,10 @@ class F1LapsF126Collector(F1LapsCollector):
         result: Dict[str, str] = {}
         for index, text in enumerate(strings[:-1]):
             if text in labels:
-                result[labels[text]] = strings[index + 1].replace("\xa0", " ").strip()
+                value = strings[index + 1].replace("\xa0", " ").strip()
+                if value in labels:
+                    continue
+                result[labels[text]] = value
         return result
 
     def _parse_tracks(self, html: str, base_url: str) -> Iterator[Dict[str, str]]:

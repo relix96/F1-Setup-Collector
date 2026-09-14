@@ -33,6 +33,21 @@ class F1Laps_F1_26_CollectorTest:
         assert collector.GameId is GameId.F1_26
         assert collector.SourceId is SourceId.F1_LAPS
 
+    def test_pairs_does_not_use_the_next_label_as_a_missing_value(self) -> None:
+        details = self.get_collector()._pairs(
+            ["Lap time", "Conditions", "Dry", "Date", "12 Jul 2026"],
+            {
+                "Lap time": "lap_time",
+                "Conditions": "conditions",
+                "Date": "date",
+            },
+        )
+
+        assert details == {
+            "conditions": "Dry",
+            "date": "12 Jul 2026",
+        }
+
     def test_mapper_uses_registered_source_id(self) -> None:
         setup = F1SetupLapsMapper().map(
             {
